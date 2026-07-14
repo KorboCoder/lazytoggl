@@ -215,39 +215,69 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.entriesPanel.Move(rows, 1)
 		return m, nil
 
-	case key.Matches(msg, m.keys.Stop):
+	case key.Matches(msg, m.keys.Space):
+		// Pause/resume: Toggl has no real pause, so this stops the running
+		// entry, and otherwise continues the most recent one.
 		if run := m.runningEntry(); run != nil {
-			m.setStatus("stopping…", false)
+			m.setStatus("pausing…", false)
 			return m, m.stopCmd(run.ID)
 		}
-		m.setStatus("no timer running", false)
+		if len(m.entries) > 0 {
+			last := m.entries[0]
+			m.setStatus("resuming…", false)
+			return m, m.startCmd(toggl.StartRequest{
+				Description: last.Description, ProjectID: last.ProjectID,
+			})
+		}
+		m.setStatus("nothing to resume — press c to create an entry", false)
 		return m, nil
+
+	case key.Matches(msg, m.keys.Create):
+		m.dialog = dialogs.NewStart("Start entry", "", 0, "")
+		return m, textinput.Blink
 
 	case key.Matches(msg, m.keys.Enter):
 		return m.handleEnter(rows)
 
 	case key.Matches(msg, m.keys.Edit):
-		if row, ok := m.entriesPanel.Selected(rows); ok && row.Kind == panels.RowEntry {
-			m.dialog = dialogs.NewEdit(row.Entry)
+		if e := m.actionTarget(rows); e != nil {
+			m.dialog = dialogs.NewEdit(*e)
 			return m, textinput.Blink
 		}
 		return m, nil
 
 	case key.Matches(msg, m.keys.Delete):
-		if row, ok := m.entriesPanel.Selected(rows); ok && row.Kind == panels.RowEntry {
-			desc := row.Entry.Description
+		if e := m.actionTarget(rows); e != nil {
+			desc := e.Description
 			if desc == "" {
 				desc = "(no description)"
 			}
-			m.dialog = dialogs.NewConfirm(row.Entry.ID, desc)
+			m.dialog = dialogs.NewConfirm(e.ID, desc)
 		}
 		return m, nil
 	}
 	return m, nil
 }
 
-// handleEnter is the single "start verb": new entry on the action row, resume
-// on a past entry, stop on the running entry; on the timer panel it toggles.
+// actionTarget is the entry e/d act on: the running entry when the Timer
+// panel is focused, otherwise the list selection.
+func (m *Model) actionTarget(rows []panels.Row) *toggl.TimeEntry {
+	if m.focus == focusTimer {
+		if run := m.runningEntry(); run != nil {
+			return run
+		}
+		m.setStatus("no timer running", false)
+		return nil
+	}
+	if row, ok := m.entriesPanel.Selected(rows); ok && row.Kind == panels.RowEntry {
+		e := row.Entry
+		return &e
+	}
+	return nil
+}
+
+// handleEnter resumes a past entry (pre-filled dialog) or stops the running
+// one; on an idle Timer panel it opens the create dialog like c does.
 func (m Model) handleEnter(rows []panels.Row) (tea.Model, tea.Cmd) {
 	if m.focus == focusTimer {
 		if run := m.runningEntry(); run != nil {
@@ -259,23 +289,16 @@ func (m Model) handleEnter(rows []panels.Row) (tea.Model, tea.Cmd) {
 	}
 
 	row, ok := m.entriesPanel.Selected(rows)
-	if !ok {
+	if !ok || row.Kind != panels.RowEntry {
 		return m, nil
 	}
-	switch row.Kind {
-	case panels.RowNew:
-		m.dialog = dialogs.NewStart("Start entry", "", 0, "")
-		return m, textinput.Blink
-	case panels.RowEntry:
-		if row.Entry.Running() {
-			m.setStatus("stopping…", false)
-			return m, m.stopCmd(row.Entry.ID)
-		}
-		m.dialog = dialogs.NewStart("Resume entry", row.Entry.Description,
-			row.Entry.ProjectID, m.projectName(row.Entry.ProjectID))
-		return m, textinput.Blink
+	if row.Entry.Running() {
+		m.setStatus("stopping…", false)
+		return m, m.stopCmd(row.Entry.ID)
 	}
-	return m, nil
+	m.dialog = dialogs.NewStart("Resume entry", row.Entry.Description,
+		row.Entry.ProjectID, m.projectName(row.Entry.ProjectID))
+	return m, textinput.Blink
 }
 
 func (m Model) View() string {

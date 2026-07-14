@@ -27,10 +27,11 @@ clock.
 
 | Key | Action |
 |---|---|
-| `enter` | Start (`+ New entry` row), resume (past entry), or stop (running entry) |
-| `x` | Stop the active timer from anywhere |
-| `e` | Edit the selected entry |
-| `d` | Delete the selected entry (with confirmation) |
+| `c` | Create a new time entry (from anywhere) |
+| `space` | Pause/resume: stop the running timer, or continue the most recent entry |
+| `enter` | Resume the selected entry (pre-filled dialog), or stop it if running |
+| `e` | Edit — the selection in the list, or the running entry when the Timer panel is focused |
+| `d` | Delete with confirmation — same targeting as `e` |
 | `j`/`k`, arrows | Navigate |
 | `tab` | Switch panel focus |
 | `r` | Refresh |

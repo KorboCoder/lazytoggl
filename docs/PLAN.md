@@ -66,4 +66,5 @@ pickers, reports, multi-workspace, and beyond.
 | Token storage | OS keychain (`zalando/go-keyring`) | Most secure; no plaintext token on disk |
 | UI style | lazygit-style panels, vim keys, popup dialogs | User preference; fits the project name |
 | Refresh model | Manual only, zero polling, optimistic state | Free plan allows only 30 req/hour |
-| Start verb | Single `enter` key (new / resume / stop by context) | Avoids redundant `s`-vs-`enter` keys |
+| Start verbs | `c` create · `space` pause/resume · `enter` resume/stop selection | Prototype feedback (2026-07-15): `+ New entry` row and `x` removed as redundant |
+| Timer-panel `e`/`d` | Act on the running entry, not the list selection | Prototype feedback (2026-07-15) |

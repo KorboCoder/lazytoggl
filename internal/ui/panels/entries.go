@@ -14,13 +14,12 @@ import (
 type RowKind int
 
 const (
-	RowNew RowKind = iota // the "+ New entry" action row
-	RowHeader
+	RowHeader RowKind = iota
 	RowEntry
 )
 
-// Row is one line of the entries list. The list is heterogeneous — an action
-// row, day headers, and entries — so the cursor skips non-selectable rows.
+// Row is one line of the entries list. The list is heterogeneous — day
+// headers and entries — so the cursor skips non-selectable rows.
 type Row struct {
 	Kind  RowKind
 	Entry toggl.TimeEntry
@@ -30,10 +29,10 @@ type Row struct {
 
 func (r Row) selectable() bool { return r.Kind != RowHeader }
 
-// BuildRows flattens entries (newest-first) into list rows: the "+ New entry"
-// row, then a header per day with that day's total, then the day's entries.
+// BuildRows flattens entries (newest-first) into list rows: a header per day
+// with that day's total, then the day's entries.
 func BuildRows(entries []toggl.TimeEntry, now time.Time) []Row {
-	rows := []Row{{Kind: RowNew}}
+	var rows []Row
 	totals := map[string]time.Duration{}
 	for _, e := range entries {
 		totals[dayKey(e.Start)] += e.Elapsed(now)
@@ -143,8 +142,12 @@ func (m *Entries) View(rows []Row, projects map[int64]toggl.Project, now time.Ti
 	for i := m.offset; i < len(rows) && i < m.offset+visible; i++ {
 		lines = append(lines, m.renderRow(rows[i], i == m.Cursor, iw, projects, now))
 	}
-	if loading && len(rows) <= 1 {
-		lines = append(lines, "  "+theme.MutedStyle.Render("loading…"))
+	if len(rows) == 0 {
+		hint := "no entries yet — press c to start one"
+		if loading {
+			hint = "loading…"
+		}
+		lines = append(lines, "  "+theme.MutedStyle.Render(hint))
 	}
 	return theme.Panel("Entries", strings.Join(lines, "\n"), width, height, focused)
 }
@@ -155,12 +158,6 @@ func (m *Entries) renderRow(r Row, selected bool, iw int, projects map[int64]tog
 		cursor = theme.CursorStyle.Render("> ")
 	}
 	switch r.Kind {
-	case RowNew:
-		label := theme.Truncate("+ New entry", iw-2)
-		if selected {
-			return cursor + theme.CursorStyle.Render(label)
-		}
-		return cursor + theme.MutedStyle.Render(label)
 	case RowHeader:
 		label := fmt.Sprintf("%s · %s", r.Label, theme.FormatTotal(r.Total))
 		return "  " + theme.HeaderStyle.Render(theme.Truncate(label, iw-2))

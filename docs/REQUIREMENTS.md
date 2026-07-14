@@ -33,16 +33,18 @@
 
 ## Keymap
 
-One verb for starting: `enter`, with context-dependent behavior.
+Refined after the Phase 1 prototype review (2026-07-15): `c` creates, `space`
+toggles, `enter` acts on the selection.
 
 | Key | Context | Action |
 |---|---|---|
-| `enter` | on `＋ New entry` row | Open empty start dialog |
+| `c` | anywhere | Create: open an empty start dialog |
+| `space` | anywhere | Pause/resume: stop the running timer, or continue the most recent entry (Toggl has no true pause — resume starts a new entry copying the last one) |
 | `enter` | on a past entry | Open start dialog **pre-filled** from that entry (resume); `enter` again to go |
 | `enter` | on the running entry | Stop it |
-| `x` | anywhere | Stop the active entry (without moving selection) |
-| `e` | on an entry | Edit description / start / stop times |
-| `d` | on an entry | Delete (confirmation dialog) |
+| `enter` | Timer panel | Stop the running timer; open the create dialog when idle |
+| `e` / `d` | entries list | Edit / delete (with confirmation) the selected entry |
+| `e` / `d` | Timer panel | Edit / delete the **running** entry, regardless of list selection |
 | `j` / `k`, arrows | list | Navigate |
 | `tab` | anywhere | Cycle panel focus |
 | `r` | anywhere | Refresh from API |
@@ -56,17 +58,16 @@ One verb for starting: `enter`, with context-dependent behavior.
 │ ▶ Writing project plan          ACME   00:12:34 │
 └─────────────────────────────────────────────────┘
 ┌─ Entries ── Today · 3h 45m ─────────────────────┐
-│   ＋ New entry                                   │
 │ > ▶ Writing project plan        ACME   00:12:34 │
 │     Standup                     —      00:15:00 │
 │     Code review                 ACME   01:02:11 │
 │   Yesterday · 6h 12m                            │
 │     ...                                         │
 └─────────────────────────────────────────────────┘
- enter:start/resume/stop  x:stop  e:edit  d:del  ?:help
+ space:pause/resume  c:new  enter:resume/stop  e:edit  d:del
 ```
 
-- When idle, the Timer panel shows a muted "no timer running — press enter to start".
+- When idle, the Timer panel shows a muted "no timer running — press c to start".
 - Dialogs (start, edit, delete-confirm, help) render as centered popups over the panels,
   lazygit-style.
 

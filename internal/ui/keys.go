@@ -6,7 +6,8 @@ type keyMap struct {
 	Up      key.Binding
 	Down    key.Binding
 	Enter   key.Binding
-	Stop    key.Binding
+	Space   key.Binding
+	Create  key.Binding
 	Edit    key.Binding
 	Delete  key.Binding
 	Refresh key.Binding
@@ -19,8 +20,9 @@ func defaultKeys() keyMap {
 	return keyMap{
 		Up:      key.NewBinding(key.WithKeys("up", "k"), key.WithHelp("↑/k", "up")),
 		Down:    key.NewBinding(key.WithKeys("down", "j"), key.WithHelp("↓/j", "down")),
-		Enter:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "start/resume/stop")),
-		Stop:    key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "stop timer")),
+		Enter:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "resume/stop")),
+		Space:   key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "pause/resume")),
+		Create:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "new entry")),
 		Edit:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 		Delete:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
@@ -31,14 +33,14 @@ func defaultKeys() keyMap {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Enter, k.Stop, k.Edit, k.Delete, k.Help}
+	return []key.Binding{k.Space, k.Create, k.Enter, k.Edit, k.Delete, k.Help}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Tab},
-		{k.Enter, k.Stop, k.Refresh},
-		{k.Edit, k.Delete},
+		{k.Space, k.Create, k.Enter},
+		{k.Edit, k.Delete, k.Refresh},
 		{k.Help, k.Quit},
 	}
 }

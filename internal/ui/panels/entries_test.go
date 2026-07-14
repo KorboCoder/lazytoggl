@@ -11,8 +11,8 @@ func fin(id int64, start time.Time, dur time.Duration) toggl.TimeEntry {
 	return toggl.TimeEntry{ID: id, Start: start, Stop: start.Add(dur), Duration: int64(dur.Seconds())}
 }
 
-// testRows: [+New, "Today" header, running, finished, "Yesterday" header,
-// finished, "Mon, Jul 9"-style header, finished]
+// testRows: ["Today" header, running, finished, "Yesterday" header, finished,
+// "Mon, Jul 9"-style header, finished]
 func testRows(now time.Time) []Row {
 	entries := []toggl.TimeEntry{
 		{ID: 1, Start: now.Add(-10 * time.Minute), Duration: -1},
@@ -27,7 +27,7 @@ func TestBuildRows(t *testing.T) {
 	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.Local)
 	rows := testRows(now)
 
-	wantKinds := []RowKind{RowNew, RowHeader, RowEntry, RowEntry, RowHeader, RowEntry, RowHeader, RowEntry}
+	wantKinds := []RowKind{RowHeader, RowEntry, RowEntry, RowHeader, RowEntry, RowHeader, RowEntry}
 	if len(rows) != len(wantKinds) {
 		t.Fatalf("rows = %d, want %d", len(rows), len(wantKinds))
 	}
@@ -36,19 +36,19 @@ func TestBuildRows(t *testing.T) {
 			t.Fatalf("rows[%d].Kind = %d, want %d", i, rows[i].Kind, k)
 		}
 	}
-	if rows[1].Label != "Today" {
-		t.Fatalf("rows[1].Label = %q, want Today", rows[1].Label)
+	if rows[0].Label != "Today" {
+		t.Fatalf("rows[0].Label = %q, want Today", rows[0].Label)
 	}
 	// Today's total = 10m running (elapsed) + 30m finished.
-	if rows[1].Total != 40*time.Minute {
-		t.Fatalf("today total = %v, want 40m", rows[1].Total)
+	if rows[0].Total != 40*time.Minute {
+		t.Fatalf("today total = %v, want 40m", rows[0].Total)
 	}
-	if rows[4].Label != "Yesterday" {
-		t.Fatalf("rows[4].Label = %q, want Yesterday", rows[4].Label)
+	if rows[3].Label != "Yesterday" {
+		t.Fatalf("rows[3].Label = %q, want Yesterday", rows[3].Label)
 	}
 	wantOld := now.AddDate(0, 0, -5).Format("Mon, Jan 2")
-	if rows[6].Label != wantOld {
-		t.Fatalf("rows[6].Label = %q, want %q", rows[6].Label, wantOld)
+	if rows[5].Label != wantOld {
+		t.Fatalf("rows[5].Label = %q, want %q", rows[5].Label, wantOld)
 	}
 }
 
@@ -61,16 +61,15 @@ func TestMoveSkipsHeaders(t *testing.T) {
 		delta int
 		want  int
 	}{
-		{1, 2},  // over "Today" header
-		{1, 3},  //
-		{1, 5},  // over "Yesterday" header
-		{1, 7},  // over the date header
-		{1, 7},  // bottom: stays
-		{-1, 5}, // back up over the header
-		{-1, 3},
+		{1, 1},  // off the "Today" header onto the running entry
+		{1, 2},  //
+		{1, 4},  // over the "Yesterday" header
+		{1, 6},  // over the date header
+		{1, 6},  // bottom: stays
+		{-1, 4}, // back up over the header
 		{-1, 2},
-		{-1, 0}, // back to "+ New entry"
-		{-1, 0}, // top: stays
+		{-1, 1},
+		{-1, 1}, // top: stays (row 0 is a header)
 	}
 	for i, s := range steps {
 		p.Move(rows, s.delta)
@@ -87,18 +86,18 @@ func TestClampSnapsToSelectable(t *testing.T) {
 
 	p.Cursor = 99
 	p.Clamp(rows)
-	if p.Cursor != 7 {
-		t.Fatalf("clamp beyond end: cursor = %d, want 7", p.Cursor)
+	if p.Cursor != 6 {
+		t.Fatalf("clamp beyond end: cursor = %d, want 6", p.Cursor)
 	}
 
-	p.Cursor = 4 // "Yesterday" header
+	p.Cursor = 3 // "Yesterday" header
 	p.Clamp(rows)
 	if rows[p.Cursor].Kind == RowHeader {
 		t.Fatalf("clamp left cursor on a header (index %d)", p.Cursor)
 	}
 
 	p.Cursor = 3
-	p.Clamp(BuildRows(nil, now)) // list shrank to just "+ New entry"
+	p.Clamp(BuildRows(nil, now)) // list shrank to nothing
 	if p.Cursor != 0 {
 		t.Fatalf("clamp on shrink: cursor = %d, want 0", p.Cursor)
 	}

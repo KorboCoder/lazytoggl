@@ -26,8 +26,9 @@ var fixedNow = time.Date(2026, 7, 14, 12, 0, 0, 0, time.Local)
 // Fixture IDs deliberately match entries seeded in the mock so that mutation
 // commands (Stop/Update/Delete) resolve against the service.
 //
-// Row layout: 0 "+ New entry" · 1 "Today" header · 2 running ID1 ·
-// 3 finished ID2 · 4 "Yesterday" header · 5 finished ID3.
+// Row layout: 0 "Today" header · 1 running ID1 · 2 finished ID2 ·
+// 3 "Yesterday" header · 4 finished ID3. After load the cursor clamps off
+// the header onto the running entry (row 1).
 func fixtureEntries() []toggl.TimeEntry {
 	return []toggl.TimeEntry{
 		{ID: 1, WorkspaceID: 1, ProjectID: 101, Description: "Deep work",
@@ -144,7 +145,7 @@ func (d *driver) dialogContains(want string) {
 
 func TestResumePrefillsAndStarts(t *testing.T) {
 	d := newDriver(t)
-	d.keys("j", "j") // running ID1 -> finished ID2 ("Standup")
+	d.key("j") // running ID1 -> finished ID2 ("Standup")
 	d.key("enter")
 
 	if _, ok := d.m.dialog.(*dialogs.Start); !ok {
@@ -173,7 +174,7 @@ func TestResumePrefillsAndStarts(t *testing.T) {
 
 func TestEnterOnRunningEntryStops(t *testing.T) {
 	d := newDriver(t)
-	d.keys("j", "enter") // cursor on running ID1
+	d.key("enter") // cursor starts on running ID1
 
 	if d.m.dialog != nil {
 		t.Fatal("enter on the running entry must stop it, not open a dialog")
@@ -183,9 +184,9 @@ func TestEnterOnRunningEntryStops(t *testing.T) {
 	}
 }
 
-func TestStartFromNewEntryRow(t *testing.T) {
+func TestCreateBindingOpensStartDialog(t *testing.T) {
 	d := newDriver(t)
-	d.key("enter") // cursor starts on "+ New entry"
+	d.key("c")
 	d.dialogContains("Start entry")
 	d.keys("Fresh task", "enter")
 
@@ -196,11 +197,62 @@ func TestStartFromNewEntryRow(t *testing.T) {
 	if old, _ := d.entryByID(1); old.Running() {
 		t.Fatal("old running entry not stopped when the new one started")
 	}
+
+	// c works from the Timer panel too.
+	d.keys("tab", "c")
+	d.dialogContains("Start entry")
+	d.key("esc")
+}
+
+func TestSpacePausesAndResumes(t *testing.T) {
+	d := newDriver(t)
+
+	d.key(" ") // pause: stops the running entry
+	if d.m.runningEntry() != nil {
+		t.Fatal("timer still running after space")
+	}
+
+	latest := d.m.entries[0]
+	d.key(" ") // resume: continues the most recent entry
+	run := d.m.runningEntry()
+	if run == nil || run.Description != latest.Description || run.ProjectID != latest.ProjectID {
+		t.Fatalf("resumed entry = %+v, want copy of %+v", run, latest)
+	}
+	if len(d.m.entries) != 4 {
+		t.Fatalf("entries = %d, want 4 (resume creates a new entry)", len(d.m.entries))
+	}
+}
+
+func TestTimerFocusActsOnRunningEntry(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "tab") // select "Standup" in the list, then focus the Timer panel
+
+	// e edits the running entry, not the list selection.
+	d.key("e")
+	d.dialogContains("Edit entry")
+	d.dialogContains("Deep work")
+	d.key("esc")
+
+	// d deletes the running entry, not the list selection.
+	d.key("d")
+	d.dialogContains("Delete entry?")
+	d.dialogContains("Deep work")
+	d.key("n")
+
+	// With no timer running, e/d on the Timer panel are a no-op with a hint.
+	d.key(" ") // stop the timer
+	d.key("e")
+	if d.m.dialog != nil {
+		t.Fatal("edit dialog opened with no running entry")
+	}
+	if d.m.status != "no timer running" {
+		t.Fatalf("status = %q, want 'no timer running'", d.m.status)
+	}
 }
 
 func TestEditSavesDescription(t *testing.T) {
 	d := newDriver(t)
-	d.keys("j", "e") // edit the running entry
+	d.key("e") // cursor starts on the running entry
 	d.dialogContains("Edit entry")
 	d.keys("ctrl+u", "Renamed", "enter")
 
@@ -215,7 +267,7 @@ func TestEditSavesDescription(t *testing.T) {
 
 func TestEditValidation(t *testing.T) {
 	d := newDriver(t)
-	d.keys("j", "j", "j", "e") // finished ID3 on yesterday
+	d.keys("j", "j", "e") // finished ID3 on yesterday
 	d.dialogContains("Edit entry")
 
 	// Garbage stop time is rejected.
@@ -235,7 +287,7 @@ func TestEditValidation(t *testing.T) {
 
 func TestDeleteCancelAndConfirm(t *testing.T) {
 	d := newDriver(t)
-	d.keys("j", "j", "j", "d")
+	d.keys("j", "j", "d")
 	d.dialogContains("Delete entry?")
 	d.dialogContains("Yesterday task")
 
@@ -255,10 +307,10 @@ func TestDeleteCancelAndConfirm(t *testing.T) {
 
 func TestDialogSwallowsGlobalKeys(t *testing.T) {
 	d := newDriver(t)
-	d.key("enter") // open start dialog
-	d.keys("qxder") // global quit/stop/delete/edit/refresh keys — all just text
+	d.key("c")               // open start dialog
+	d.keys("qcder", " ", "x") // global keys and space — all just text here
 
-	d.dialogContains("qxder")
+	d.dialogContains("qcder x")
 	if len(d.m.entries) != 3 {
 		t.Fatalf("entries = %d, want 3 (global keys leaked through the dialog)", len(d.m.entries))
 	}
@@ -268,15 +320,6 @@ func TestDialogSwallowsGlobalKeys(t *testing.T) {
 	}
 	if run := d.m.runningEntry(); run == nil || run.ID != 1 {
 		t.Fatal("running entry changed while a dialog was open")
-	}
-}
-
-func TestStopKeyWithNoTimer(t *testing.T) {
-	d := newDriver(t)
-	d.keys("j", "enter") // stop the running entry
-	d.key("x")           // nothing to stop now
-	if d.m.status != "no timer running" {
-		t.Fatalf("status = %q, want 'no timer running'", d.m.status)
 	}
 }
 

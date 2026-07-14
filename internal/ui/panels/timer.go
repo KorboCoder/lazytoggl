@@ -15,7 +15,7 @@ func Timer(running *toggl.TimeEntry, projects map[int64]toggl.Project, now time.
 	iw := theme.PanelInnerWidth(width)
 	var line string
 	if running == nil {
-		line = theme.MutedStyle.Render(theme.Truncate("no timer running — press enter to start", iw))
+		line = theme.MutedStyle.Render(theme.Truncate("no timer running — press c to start", iw))
 	} else {
 		clock := theme.FormatClock(running.Elapsed(now))
 		projName, projColor := projectLabel(running.ProjectID, projects)
