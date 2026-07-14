@@ -37,6 +37,12 @@ type Model struct {
 	focus        int
 	dialog       dialogs.Dialog
 
+	// pausedID is the entry shown "paused" in the Timer panel: stopped via
+	// space, but kept visible (frozen clock, ⏸) until resumed or superseded
+	// by a new entry. Toggl has no native pause, so this is UI-only state
+	// layered over m.entries, the same source of truth used elsewhere.
+	pausedID int64
+
 	width, height int
 	now           time.Time
 	loading       bool
@@ -68,6 +74,7 @@ type dataLoadedMsg struct {
 
 type entryStartedMsg struct{ entry toggl.TimeEntry }
 type entryStoppedMsg struct{ entry toggl.TimeEntry }
+type entryPausedMsg struct{ entry toggl.TimeEntry }
 type entryUpdatedMsg struct{ entry toggl.TimeEntry }
 type entryDeletedMsg struct{ id int64 }
 type errMsg struct{ err error }
@@ -112,6 +119,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.entries = append([]toggl.TimeEntry{msg.entry}, m.entries...)
+		m.pausedID = 0
 		m.setStatus("timer started", false)
 		m.clampCursor()
 		return m, nil
@@ -119,6 +127,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case entryStoppedMsg:
 		m.replaceEntry(msg.entry)
 		m.setStatus("timer stopped", false)
+		return m, nil
+
+	case entryPausedMsg:
+		m.replaceEntry(msg.entry)
+		m.pausedID = msg.entry.ID
+		m.setStatus("paused", false)
 		return m, nil
 
 	case entryUpdatedMsg:
@@ -132,6 +146,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.entries = append(m.entries[:i], m.entries[i+1:]...)
 				break
 			}
+		}
+		if msg.id == m.pausedID {
+			m.pausedID = 0
 		}
 		m.setStatus("entry deleted", false)
 		m.clampCursor()
@@ -216,21 +233,29 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Space):
-		// Pause/resume: Toggl has no real pause, so this stops the running
-		// entry, and otherwise continues the most recent one.
+		// Pause/resume: Toggl has no real pause, so pausing stops the entry
+		// via the API but keeps it pinned in the Timer panel (⏸, frozen
+		// clock) until resumed, instead of clearing back to idle. Resuming
+		// starts a new entry continuing the paused (or otherwise most
+		// recent) one.
 		if run := m.runningEntry(); run != nil {
 			m.setStatus("pausing…", false)
-			return m, m.stopCmd(run.ID)
+			return m, m.pauseCmd(run.ID)
 		}
-		if len(m.entries) > 0 {
-			last := m.entries[0]
-			m.setStatus("resuming…", false)
-			return m, m.startCmd(toggl.StartRequest{
-				Description: last.Description, ProjectID: last.ProjectID,
-			})
+		var last toggl.TimeEntry
+		switch {
+		case m.pausedEntry() != nil:
+			last = *m.pausedEntry()
+		case len(m.entries) > 0:
+			last = m.entries[0]
+		default:
+			m.setStatus("nothing to resume — press c to create an entry", false)
+			return m, nil
 		}
-		m.setStatus("nothing to resume — press c to create an entry", false)
-		return m, nil
+		m.setStatus("resuming…", false)
+		return m, m.startCmd(toggl.StartRequest{
+			Description: last.Description, ProjectID: last.ProjectID,
+		})
 
 	case key.Matches(msg, m.keys.Create):
 		m.dialog = dialogs.NewStart("Start entry", "", 0, "")
@@ -259,12 +284,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// actionTarget is the entry e/d act on: the running entry when the Timer
-// panel is focused, otherwise the list selection.
+// actionTarget is the entry e/d act on: whatever the Timer panel is showing
+// (running, else paused) when it's focused, otherwise the list selection.
 func (m *Model) actionTarget(rows []panels.Row) *toggl.TimeEntry {
 	if m.focus == focusTimer {
 		if run := m.runningEntry(); run != nil {
 			return run
+		}
+		if p := m.pausedEntry(); p != nil {
+			return p
 		}
 		m.setStatus("no timer running", false)
 		return nil
@@ -323,7 +351,7 @@ func (m Model) View() string {
 		entriesH = 5
 	}
 
-	timer := panels.Timer(m.runningEntry(), m.projects, m.now, m.width, m.focus == focusTimer)
+	timer := panels.Timer(m.runningEntry(), m.pausedEntry(), m.projects, m.now, m.width, m.focus == focusTimer)
 	rows := panels.BuildRows(m.entries, m.now)
 	entriesView := m.entriesPanel.View(rows, m.projects, m.now, m.width, entriesH,
 		m.loading, m.focus == focusEntries)
@@ -360,6 +388,21 @@ func (m *Model) replaceEntry(e toggl.TimeEntry) {
 func (m Model) runningEntry() *toggl.TimeEntry {
 	for i := range m.entries {
 		if m.entries[i].Running() {
+			return &m.entries[i]
+		}
+	}
+	return nil
+}
+
+// pausedEntry looks up pausedID in m.entries (the source of truth), so a
+// paused entry that gets edited or deleted elsewhere stays consistent (or
+// disappears) without any separate bookkeeping.
+func (m Model) pausedEntry() *toggl.TimeEntry {
+	if m.pausedID == 0 {
+		return nil
+	}
+	for i := range m.entries {
+		if m.entries[i].ID == m.pausedID {
 			return &m.entries[i]
 		}
 	}
@@ -410,6 +453,19 @@ func (m Model) stopCmd(id int64) tea.Cmd {
 			return errMsg{err}
 		}
 		return entryStoppedMsg{entry: e}
+	}
+}
+
+// pauseCmd stops the entry via the same API call as stopCmd, but tags the
+// result as a pause so the Timer panel keeps it pinned instead of going idle.
+func (m Model) pauseCmd(id int64) tea.Cmd {
+	svc := m.svc
+	return func() tea.Msg {
+		e, err := svc.Stop(context.Background(), id)
+		if err != nil {
+			return errMsg{err}
+		}
+		return entryPausedMsg{entry: e}
 	}
 }
 

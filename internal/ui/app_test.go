@@ -15,13 +15,28 @@ func keyRune(r rune) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
 }
 
-// waitFor waits until want shows up in newly produced output. Note that the
-// output stream is consumed and Bubble Tea repaints only changed lines, so
-// each waitFor must target text that appears *after* the previous one.
+// waitFor waits until want shows up in newly produced output. teatest fully
+// drains the output stream on each call, so a single frame's text can only
+// be asserted once — checking two substrings from the *same* frame back to
+// back will hang the second call forever (nothing new ever arrives). Use
+// waitForAll for that case.
 func waitFor(t *testing.T, tm *teatest.TestModel, want string) {
 	t.Helper()
+	waitForAll(t, tm, want)
+}
+
+// waitForAll waits until every want has appeared in the same accumulated
+// read, so multiple substrings from one rendered frame can be asserted
+// together without racing teatest's drain-on-each-call behavior.
+func waitForAll(t *testing.T, tm *teatest.TestModel, wants ...string) {
+	t.Helper()
 	teatest.WaitFor(t, tm.Output(), func(b []byte) bool {
-		return bytes.Contains(b, []byte(want))
+		for _, w := range wants {
+			if !bytes.Contains(b, []byte(w)) {
+				return false
+			}
+		}
+		return true
 	}, teatest.WithDuration(5*time.Second))
 }
 
@@ -35,9 +50,10 @@ func TestSmoke(t *testing.T) {
 	// as the running entry and day totals).
 	waitFor(t, tm, "Yesterday")
 
-	// Pause the running timer from anywhere.
+	// Pause the running timer from anywhere; it stays pinned to the Timer
+	// panel with a paused indicator instead of clearing to idle.
 	tm.Send(keyRune(' '))
-	waitFor(t, tm, "timer stopped")
+	waitForAll(t, tm, "⏸", "paused")
 
 	// Create a new entry through the start dialog.
 	tm.Send(keyRune('c'))

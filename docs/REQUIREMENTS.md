@@ -39,12 +39,12 @@ toggles, `enter` acts on the selection.
 | Key | Context | Action |
 |---|---|---|
 | `c` | anywhere | Create: open an empty start dialog |
-| `space` | anywhere | Pause/resume: stop the running timer, or continue the most recent entry (Toggl has no true pause — resume starts a new entry copying the last one) |
+| `space` | anywhere | Pause/resume: stops the running timer via the API but keeps it **pinned** to the Timer panel (⏸, frozen clock) instead of clearing to idle; pressing `space` again continues it (Toggl has no true pause — resume starts a new entry copying the paused one, exactly like the desktop app's "continue" button) |
 | `enter` | on a past entry | Open start dialog **pre-filled** from that entry (resume); `enter` again to go |
-| `enter` | on the running entry | Stop it |
+| `enter` | on the running entry | Stop it (clears the Timer panel to idle — unlike `space`) |
 | `enter` | Timer panel | Stop the running timer; open the create dialog when idle |
 | `e` / `d` | entries list | Edit / delete (with confirmation) the selected entry |
-| `e` / `d` | Timer panel | Edit / delete the **running** entry, regardless of list selection |
+| `e` / `d` | Timer panel | Edit / delete whatever the panel is showing — the **running** entry, or the **paused** one if nothing is running — regardless of list selection |
 | `j` / `k`, arrows | list | Navigate |
 | `tab` | anywhere | Cycle panel focus |
 | `r` | anywhere | Refresh from API |

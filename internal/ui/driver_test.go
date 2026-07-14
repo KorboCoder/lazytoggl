@@ -24,14 +24,19 @@ import (
 var fixedNow = time.Date(2026, 7, 14, 12, 0, 0, 0, time.Local)
 
 // Fixture IDs deliberately match entries seeded in the mock so that mutation
-// commands (Stop/Update/Delete) resolve against the service.
+// commands (Stop/Update/Delete) resolve against the service. Update and
+// Delete only need the ID to resolve; Stop is different — it takes just an
+// ID and hands back whatever the mock has stored for it, so entry 1's
+// description/project below must match toggl.NewMock()'s own seed for ID 1
+// ("Writing project plan", ACME), or a pause/stop round-trip would silently
+// overwrite the fixture's description with the mock's.
 //
 // Row layout: 0 "Today" header · 1 running ID1 · 2 finished ID2 ·
 // 3 "Yesterday" header · 4 finished ID3. After load the cursor clamps off
 // the header onto the running entry (row 1).
 func fixtureEntries() []toggl.TimeEntry {
 	return []toggl.TimeEntry{
-		{ID: 1, WorkspaceID: 1, ProjectID: 101, Description: "Deep work",
+		{ID: 1, WorkspaceID: 1, ProjectID: 101, Description: "Writing project plan",
 			Start: fixedNow.Add(-10 * time.Minute), Duration: -1},
 		{ID: 2, WorkspaceID: 1, Description: "Standup",
 			Start: fixedNow.Add(-2 * time.Hour), Stop: fixedNow.Add(-105 * time.Minute), Duration: 15 * 60},
@@ -88,7 +93,7 @@ func (d *driver) exec(cmd tea.Cmd) {
 func (d *driver) feed(msg tea.Msg) {
 	d.t.Helper()
 	switch msg.(type) {
-	case dataLoadedMsg, entryStartedMsg, entryStoppedMsg, entryUpdatedMsg,
+	case dataLoadedMsg, entryStartedMsg, entryStoppedMsg, entryPausedMsg, entryUpdatedMsg,
 		entryDeletedMsg, errMsg,
 		dialogs.CloseMsg, dialogs.StartSubmitMsg, dialogs.EditSubmitMsg,
 		dialogs.DeleteConfirmMsg:
@@ -207,16 +212,25 @@ func TestCreateBindingOpensStartDialog(t *testing.T) {
 func TestSpacePausesAndResumes(t *testing.T) {
 	d := newDriver(t)
 
-	d.key(" ") // pause: stops the running entry
+	d.key(" ") // pause: stops the entry via the API but pins it to the Timer panel
 	if d.m.runningEntry() != nil {
 		t.Fatal("timer still running after space")
 	}
+	paused := d.m.pausedEntry()
+	if paused == nil || paused.Description != "Writing project plan" {
+		t.Fatalf("paused entry = %+v, want the stopped 'Writing project plan' entry pinned", paused)
+	}
+	if view := d.m.View(); !strings.Contains(view, "⏸") || !strings.Contains(view, "Writing project plan") {
+		t.Fatalf("Timer panel does not show the paused entry with its indicator:\n%s", view)
+	}
 
-	latest := d.m.entries[0]
-	d.key(" ") // resume: continues the most recent entry
+	d.key(" ") // resume: continues the paused entry
 	run := d.m.runningEntry()
-	if run == nil || run.Description != latest.Description || run.ProjectID != latest.ProjectID {
-		t.Fatalf("resumed entry = %+v, want copy of %+v", run, latest)
+	if run == nil || run.Description != paused.Description || run.ProjectID != paused.ProjectID {
+		t.Fatalf("resumed entry = %+v, want copy of %+v", run, paused)
+	}
+	if d.m.pausedEntry() != nil {
+		t.Fatal("paused state not cleared after resuming")
 	}
 	if len(d.m.entries) != 4 {
 		t.Fatalf("entries = %d, want 4 (resume creates a new entry)", len(d.m.entries))
@@ -230,20 +244,35 @@ func TestTimerFocusActsOnRunningEntry(t *testing.T) {
 	// e edits the running entry, not the list selection.
 	d.key("e")
 	d.dialogContains("Edit entry")
-	d.dialogContains("Deep work")
+	d.dialogContains("Writing project plan")
 	d.key("esc")
 
 	// d deletes the running entry, not the list selection.
 	d.key("d")
 	d.dialogContains("Delete entry?")
-	d.dialogContains("Deep work")
+	d.dialogContains("Writing project plan")
 	d.key("n")
 
-	// With no timer running, e/d on the Timer panel are a no-op with a hint.
-	d.key(" ") // stop the timer
+	// Pausing keeps the entry pinned to the Timer panel, so e/d still target
+	// it — not whatever the list has selected — while paused.
+	d.key(" ")
+	if d.m.runningEntry() != nil {
+		t.Fatal("timer still running after pause")
+	}
+	d.key("e")
+	d.dialogContains("Edit entry")
+	d.dialogContains("Writing project plan")
+	d.key("esc")
+
+	// Deleting the paused entry clears it; e/d on an idle Timer panel is
+	// then a no-op with a hint.
+	d.keys("d", "y")
+	if d.m.dialog != nil {
+		t.Fatal("dialog still open after delete")
+	}
 	d.key("e")
 	if d.m.dialog != nil {
-		t.Fatal("edit dialog opened with no running entry")
+		t.Fatal("edit dialog opened with no running or paused entry")
 	}
 	if d.m.status != "no timer running" {
 		t.Fatalf("status = %q, want 'no timer running'", d.m.status)

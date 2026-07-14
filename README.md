@@ -28,9 +28,9 @@ clock.
 | Key | Action |
 |---|---|
 | `c` | Create a new time entry (from anywhere) |
-| `space` | Pause/resume: stop the running timer, or continue the most recent entry |
+| `space` | Pause/resume: stops the timer but keeps it pinned to the Timer panel (⏸, frozen clock) until resumed |
 | `enter` | Resume the selected entry (pre-filled dialog), or stop it if running |
-| `e` | Edit — the selection in the list, or the running entry when the Timer panel is focused |
+| `e` | Edit — the selection in the list, or whatever the Timer panel shows (running, else paused) when it's focused |
 | `d` | Delete with confirmation — same targeting as `e` |
 | `j`/`k`, arrows | Navigate |
 | `tab` | Switch panel focus |

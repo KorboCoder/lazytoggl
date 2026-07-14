@@ -14,6 +14,7 @@ import (
 var (
 	Accent = lipgloss.AdaptiveColor{Light: "#B3186B", Dark: "#E57CD8"} // toggl pink
 	Green  = lipgloss.AdaptiveColor{Light: "#0A7D33", Dark: "#43C465"}
+	Amber  = lipgloss.AdaptiveColor{Light: "#B8860B", Dark: "#E0A030"}
 	Red    = lipgloss.AdaptiveColor{Light: "#C0392B", Dark: "#E06C60"}
 	Muted  = lipgloss.AdaptiveColor{Light: "#9E9E9E", Dark: "#6B6B6B"}
 )
@@ -22,6 +23,7 @@ var (
 	MutedStyle   = lipgloss.NewStyle().Foreground(Muted)
 	HeaderStyle  = lipgloss.NewStyle().Foreground(Muted).Bold(true)
 	RunningStyle = lipgloss.NewStyle().Foreground(Green).Bold(true)
+	PausedStyle  = lipgloss.NewStyle().Foreground(Amber).Bold(true)
 	CursorStyle  = lipgloss.NewStyle().Foreground(Accent).Bold(true)
 	ErrStyle     = lipgloss.NewStyle().Foreground(Red)
 )
