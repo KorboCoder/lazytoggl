@@ -1,0 +1,13 @@
+# Binaries
+/lazytoggl
+*.exe
+
+# Go build/test artifacts
+*.test
+*.out
+/dist/
+
+# Editor/OS noise
+.DS_Store
+.idea/
+.vscode/
