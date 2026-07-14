@@ -233,29 +233,21 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Space):
-		// Pause/resume: Toggl has no real pause, so pausing stops the entry
-		// via the API but keeps it pinned in the Timer panel (⏸, frozen
-		// clock) until resumed, instead of clearing back to idle. Resuming
-		// starts a new entry continuing the paused (or otherwise most
-		// recent) one.
+		// Pause/resume toggles whatever the Timer panel is already showing.
+		// Toggl has no real pause, so pausing stops the entry via the API
+		// but keeps it pinned in the Timer panel (⏸, frozen clock) until
+		// resumed, instead of clearing back to idle. It's a no-op when the
+		// panel is idle — space never reaches into history to resume
+		// something that wasn't already active or paused.
 		if run := m.runningEntry(); run != nil {
 			m.setStatus("pausing…", false)
 			return m, m.pauseCmd(run.ID)
 		}
-		var last toggl.TimeEntry
-		switch {
-		case m.pausedEntry() != nil:
-			last = *m.pausedEntry()
-		case len(m.entries) > 0:
-			last = m.entries[0]
-		default:
-			m.setStatus("nothing to resume — press c to create an entry", false)
-			return m, nil
+		if p := m.pausedEntry(); p != nil {
+			m.setStatus("resuming…", false)
+			return m, m.startCmd(toggl.StartRequest{Description: p.Description, ProjectID: p.ProjectID})
 		}
-		m.setStatus("resuming…", false)
-		return m, m.startCmd(toggl.StartRequest{
-			Description: last.Description, ProjectID: last.ProjectID,
-		})
+		return m, nil
 
 	case key.Matches(msg, m.keys.Create):
 		m.dialog = dialogs.NewStart("Start entry", "", 0, "")

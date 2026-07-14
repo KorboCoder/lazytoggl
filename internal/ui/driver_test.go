@@ -237,6 +237,32 @@ func TestSpacePausesAndResumes(t *testing.T) {
 	}
 }
 
+// TestSpaceNoOpWhenIdle: space only toggles what the Timer panel is already
+// showing. It must never reach into history to resume something that was
+// never running or paused in the first place.
+func TestSpaceNoOpWhenIdle(t *testing.T) {
+	d := newDriver(t)
+	d.key("enter") // stop the running entry outright (not pause) — panel goes idle
+
+	if d.m.runningEntry() != nil || d.m.pausedEntry() != nil {
+		t.Fatal("setup failed: expected a fully idle Timer panel")
+	}
+	before := len(d.m.entries)
+	beforeStatus := d.m.status
+
+	d.key(" ")
+
+	if d.m.runningEntry() != nil || d.m.pausedEntry() != nil {
+		t.Fatal("space started an entry from an idle Timer panel")
+	}
+	if len(d.m.entries) != before {
+		t.Fatalf("entries = %d, want %d unchanged (space must not create an entry)", len(d.m.entries), before)
+	}
+	if d.m.status != beforeStatus {
+		t.Fatalf("status changed to %q on an idle space press, want unchanged %q", d.m.status, beforeStatus)
+	}
+}
+
 func TestTimerFocusActsOnRunningEntry(t *testing.T) {
 	d := newDriver(t)
 	d.keys("j", "tab") // select "Standup" in the list, then focus the Timer panel

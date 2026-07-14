@@ -69,3 +69,4 @@ pickers, reports, multi-workspace, and beyond.
 | Start verbs | `c` create · `space` pause/resume · `enter` resume/stop selection | Prototype feedback (2026-07-15): `+ New entry` row and `x` removed as redundant |
 | Timer-panel `e`/`d` | Act on the running entry, or the paused one, not the list selection | Prototype feedback (2026-07-15) |
 | Pause via `space` | Stops the entry via the API but keeps it pinned in the Timer panel (⏸, frozen clock) instead of clearing to idle | Prototype feedback (2026-07-15): "shouldn't clear the Time bar." Toggl has no native pause, so this is UI-only state (`pausedID`) layered over the entries list — resuming starts a new entry copying the paused one |
+| `space` on an idle Timer panel | No-op — never falls back to resuming something from history | Prototype feedback (2026-07-15): "I don't want it to do anything if the Timer panel doesn't have an entry active" |

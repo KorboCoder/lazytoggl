@@ -39,7 +39,7 @@ toggles, `enter` acts on the selection.
 | Key | Context | Action |
 |---|---|---|
 | `c` | anywhere | Create: open an empty start dialog |
-| `space` | anywhere | Pause/resume: stops the running timer via the API but keeps it **pinned** to the Timer panel (⏸, frozen clock) instead of clearing to idle; pressing `space` again continues it (Toggl has no true pause — resume starts a new entry copying the paused one, exactly like the desktop app's "continue" button) |
+| `space` | anywhere | Pause/resume: toggles whatever the Timer panel already shows. Running → stops it via the API but keeps it **pinned** to the panel (⏸, frozen clock) instead of clearing to idle. Paused → continues it (Toggl has no true pause — resume starts a new entry copying the paused one, like the desktop app's "continue" button). Idle (nothing running or paused) → **no-op**; it never reaches into history to resume something on its own |
 | `enter` | on a past entry | Open start dialog **pre-filled** from that entry (resume); `enter` again to go |
 | `enter` | on the running entry | Stop it (clears the Timer panel to idle — unlike `space`) |
 | `enter` | Timer panel | Stop the running timer; open the create dialog when idle |
