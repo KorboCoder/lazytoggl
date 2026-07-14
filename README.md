@@ -12,6 +12,17 @@ API calls are made yet. See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
 go run .
 ```
 
+## Test
+
+```sh
+go test -race ./...
+```
+
+UI flows are covered two ways: `teatest` drives the real Bubble Tea event loop
+end-to-end, and a synchronous driver (`internal/ui/driver_test.go`) exercises
+every dialog flow deterministically against fixture data pinned to a fixed
+clock.
+
 ## Keys
 
 | Key | Action |

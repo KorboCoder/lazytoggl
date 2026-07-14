@@ -49,20 +49,3 @@ func TestSmoke(t *testing.T) {
 	tm.Send(keyRune('q'))
 	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
 }
-
-// TestDeleteFlow exercises the confirm dialog.
-func TestDeleteFlow(t *testing.T) {
-	tm := teatest.NewTestModel(t, New(toggl.NewMock()), teatest.WithInitialTermSize(90, 30))
-	waitFor(t, tm, "Standup")
-
-	// Move from "+ New entry" down past the header to the first two entries.
-	tm.Send(keyRune('j')) // running entry
-	tm.Send(keyRune('j')) // "Standup"
-	tm.Send(keyRune('d'))
-	waitFor(t, tm, "Delete entry?")
-	tm.Send(keyRune('y'))
-	waitFor(t, tm, "entry deleted")
-
-	tm.Send(keyRune('q'))
-	tm.WaitFinished(t, teatest.WithFinalTimeout(3*time.Second))
-}
