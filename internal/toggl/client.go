@@ -90,8 +90,12 @@ func (c *Client) Me(ctx context.Context) (Me, error) {
 }
 
 func (c *Client) RecentEntries(ctx context.Context) ([]TimeEntry, error) {
+	now := time.Now()
 	q := url.Values{}
-	q.Set("start_date", time.Now().Add(-recentEntriesLookback).Format(time.RFC3339))
+	// The API rejects start_date without end_date (and vice versa) with a
+	// 400 — they're required together, confirmed live against the real API.
+	q.Set("start_date", now.Add(-recentEntriesLookback).Format(time.RFC3339))
+	q.Set("end_date", now.Format(time.RFC3339))
 	raw, err := c.do(ctx, http.MethodGet, "/me/time_entries?"+q.Encode(), nil)
 	if err != nil {
 		return nil, err

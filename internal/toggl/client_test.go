@@ -205,8 +205,12 @@ func TestRecentEntriesSortsNewestFirstAndSendsLookbackWindow(t *testing.T) {
 	if req.URL.Path != "/me/time_entries" {
 		t.Fatalf("path = %q, want /me/time_entries", req.URL.Path)
 	}
+	// The API 400s if either is sent without the other — confirmed live.
 	if req.URL.Query().Get("start_date") == "" {
 		t.Fatal("request missing start_date lookback bound")
+	}
+	if req.URL.Query().Get("end_date") == "" {
+		t.Fatal("request missing end_date — the API requires it alongside start_date")
 	}
 }
 

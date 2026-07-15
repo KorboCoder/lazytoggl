@@ -75,7 +75,7 @@ docs and community API reference during Phase 2 implementation (`internal/toggl/
 | Purpose | Endpoint |
 |---|---|
 | Validate token, default workspace | `GET /me` → `default_workspace_id` (falls back to legacy `default_wid` if absent) |
-| Recent entries | `GET /me/time_entries?start_date=...` (client bounds the window to the last 8 days) |
+| Recent entries | `GET /me/time_entries?start_date=...&end_date=...` (client bounds the window to the last 8 days). Confirmed live: the API 400s ("start_date and end_date are both required") if either is sent without the other |
 | Projects (for name/color lookup) | `GET /workspaces/{workspace_id}/projects` — **not** filtered by `active`; a past entry can reference an archived project, and filtering it out would break its display |
 | Start | `POST /workspaces/{workspace_id}/time_entries` with `description`, `start` (RFC3339), `duration: -1`, `created_with: "lazytoggl"`, optional `project_id` |
 | Stop | `PATCH /workspaces/{workspace_id}/time_entries/{id}/stop` (no body) |
