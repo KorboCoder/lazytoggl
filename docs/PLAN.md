@@ -37,19 +37,25 @@ Phase 2 swaps the mock for the real HTTP client behind the same interface.
 
 **Checkpoint:** Daniel runs `go run .`, exercises the UX, and either approves or requests
 changes. Iterate here until the UX feels right — changing layouts/keybindings is cheapest
-in this phase.
+in this phase. ✅ Approved, with two rounds of keymap/behavior feedback folded in
+(see decisions log) — Phase 2 started 2026-07-15.
 
 ### Phase 2 — MVP (real API)
 
-- Real Toggl API v9 client (`net/http`, no heavy dependencies) with `httptest` unit tests
-- First-run onboarding: prompt for the API token, validate with `GET /me`, store in the
-  OS keychain (macOS Keychain via `zalando/go-keyring`)
-- Swap the mock for the real client; add error/offline states (status-bar errors,
-  rate-limit messaging)
-- Strict request budget: no polling, optimistic local state (see ARCHITECTURE.md —
-  required by the Free-plan limit of 30 requests/hour)
+- ✅ Real Toggl API v9 client (`internal/toggl/client.go`, `net/http` only), 18
+  `httptest`-backed unit tests pinning every request/response shape
+- ✅ First-run onboarding (`internal/ui/onboard`): a standalone Bubble Tea screen that
+  prompts for the API token, validates it with `GET /me`, and hands back the
+  authenticated user
+- ✅ Token in the OS keychain via `zalando/go-keyring`; workspace id cached in
+  `config.json` so normal launches skip `/me` entirely; `$TOGGL_API_TOKEN` env override
+- ✅ `main.go` wires it all together; `-mock` flag keeps the Phase 1 prototype runnable
+  for UX work without a real account
+- ✅ Typed errors for rate-limiting (`ErrRateLimited`, HTTP 402) and bad tokens
+  (`ErrInvalidToken`, 401/403), surfaced as status-bar/onboarding messages
 
 **Checkpoint:** Daniel tracks real time with it; entries verified in the Toggl web app.
+Not yet done — this needs Daniel's own API token and a live run, which I can't do myself.
 
 ### Phase 3 — Daily use & feedback loop
 
@@ -70,3 +76,6 @@ pickers, reports, multi-workspace, and beyond.
 | Timer-panel `e`/`d` | Act on the running entry, or the paused one, not the list selection | Prototype feedback (2026-07-15) |
 | Pause via `space` | Stops the entry via the API but keeps it pinned in the Timer panel (⏸, frozen clock) instead of clearing to idle | Prototype feedback (2026-07-15): "shouldn't clear the Time bar." Toggl has no native pause, so this is UI-only state (`pausedID`) layered over the entries list — resuming starts a new entry copying the paused one |
 | `space` on an idle Timer panel | No-op — never falls back to resuming something from history | Prototype feedback (2026-07-15): "I don't want it to do anything if the Timer panel doesn't have an entry active" |
+| Running-entry detection | `stop == null` only, never the API's negative `duration` | The exact negative-duration convention for running entries is undocumented; `stop` nullability is the one signal confirmed across Toggl's own docs |
+| `GET /me/time_entries` response shape | Decode defensively: try a bare array, fall back to `{"items": [...]}` | Toggl's own docs disagree on which shape this endpoint returns; couldn't be confirmed ahead of integration |
+| Projects list | Never filtered by `active` | A past entry can reference an archived project; filtering it out of the lookup map would show "—" instead of its real name |

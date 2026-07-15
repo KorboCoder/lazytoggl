@@ -4,7 +4,7 @@
 
 ```
 lazytoggl/
-├── main.go                 # wires config + service + tea.Program
+├── main.go                 # -mock flag, onboarding gate, wires service + tea.Program
 ├── go.mod                  # module github.com/KorboCoder/lazytoggl
 ├── docs/                   # PLAN.md, REQUIREMENTS.md, ARCHITECTURE.md
 └── internal/
@@ -13,13 +13,14 @@ lazytoggl/
     │   ├── types.go        # TimeEntry, Project, Workspace, Me
     │   ├── client.go       # real HTTP client (Phase 2) — net/http only
     │   └── mock.go         # in-memory fake with seeded data (Phase 1 prototype)
-    ├── config/             # config file (~/.config/lazytoggl/) + keyring token storage
+    ├── config/             # config.json (workspace id) + keychain token storage
     └── ui/
         ├── app.go          # root model: panel focus, dialog routing, global keys
+        ├── keys.go         # key.Binding definitions (drives the help view)
         ├── panels/         # timer.go, entries.go
         ├── dialogs/        # start.go, edit.go, confirm.go
-        ├── keys.go         # key.Binding definitions (drives the help view)
-        └── styles.go       # lipgloss styles, adaptive light/dark
+        ├── theme/          # theme.go: lipgloss styles, Panel(), adaptive light/dark
+        └── onboard/         # first-run token entry, run as its own tea.Program
 ```
 
 **Dependencies:** `charmbracelet/bubbletea`, `charmbracelet/bubbles`,
@@ -42,11 +43,12 @@ type Service interface {
 ```
 
 - **Phase 1** runs the whole TUI against `mock.go` — an in-memory implementation seeded
-  with realistic fake entries, including a "running" one. The prototype is not throwaway.
-- **Phase 2** swaps in `client.go` (real HTTP) behind the same interface. UI code does
-  not change.
-- Tests exercise the client against `net/http/httptest` fixtures and can drive UI logic
-  against the mock.
+  with realistic fake entries, including a "running" one. The prototype is not throwaway;
+  `main.go -mock` still runs it, unchanged, for UX iteration without a real account.
+- **Phase 2** swaps in `client.go` (real HTTP) behind the same interface. `ui.Model`
+  imports only `toggl.Service` — zero code in `internal/ui/...` changed to support it.
+- Tests exercise the client against `net/http/httptest` fixtures (`internal/toggl/client_test.go`)
+  and drive UI logic against the mock (`internal/ui/driver_test.go`).
 
 ## UI data flow (Elm architecture)
 
@@ -65,18 +67,32 @@ type Service interface {
 
 ## Toggl API v9
 
-Base URL `https://api.track.toggl.com/api/v9`, HTTP Basic auth with `api_token:api_token`.
-Exact request/response shapes to be verified against https://engineering.toggl.com/docs/
-during Phase 2 (the docs site is JS-rendered; shapes below are from prior knowledge).
+Base URL `https://api.track.toggl.com/api/v9`. HTTP Basic auth: **username is the
+API token, password is the literal string `"api_token"`** — not the token in the
+password field, a common integration mistake. Confirmed against Toggl's engineering
+docs and community API reference during Phase 2 implementation (`internal/toggl/client.go`).
 
 | Purpose | Endpoint |
 |---|---|
-| Validate token, default workspace | `GET /me` |
-| Recent entries (running one has negative duration) | `GET /me/time_entries` |
-| Start | `POST /workspaces/{wid}/time_entries` with `duration: -1`, `start`, `created_with` |
-| Stop | `PATCH /workspaces/{wid}/time_entries/{id}/stop` |
-| Edit | `PUT /workspaces/{wid}/time_entries/{id}` |
-| Delete | `DELETE /workspaces/{wid}/time_entries/{id}` |
+| Validate token, default workspace | `GET /me` → `default_workspace_id` (falls back to legacy `default_wid` if absent) |
+| Recent entries | `GET /me/time_entries?start_date=...` (client bounds the window to the last 8 days) |
+| Projects (for name/color lookup) | `GET /workspaces/{workspace_id}/projects` — **not** filtered by `active`; a past entry can reference an archived project, and filtering it out would break its display |
+| Start | `POST /workspaces/{workspace_id}/time_entries` with `description`, `start` (RFC3339), `duration: -1`, `created_with: "lazytoggl"`, optional `project_id` |
+| Stop | `PATCH /workspaces/{workspace_id}/time_entries/{id}/stop` (no body) |
+| Edit | `PUT /workspaces/{workspace_id}/time_entries/{id}`; `stop`/`duration` only sent when the entry is finished, omitted while running |
+| Delete | `DELETE /workspaces/{workspace_id}/time_entries/{id}` |
+
+A running entry is identified by a null/absent `"stop"` field. Toggl's own docs
+describe the running entry's `"duration"` as a negative number encoding the start
+time, but the exact convention is undocumented and **not relied on** — `stop == null`
+is the only signal the client trusts; a running entry's `Duration` is always stored
+internally as the sentinel `-1` regardless of what the API sent, matching `mock.go`.
+
+`GET /me/time_entries`'s exact response shape (bare JSON array vs. an
+`{"items": [...]}` envelope) could not be pinned down with certainty from
+documentation alone — different Toggl doc sources show each. `decodeTimeEntryList`
+in `client.go` tries the bare array first, then falls back to the envelope, so
+either shape works.
 
 ## Rate limits
 
@@ -103,8 +119,17 @@ as long as nothing polls.
 
 ## Config & secrets
 
-- **API token:** OS keychain via `zalando/go-keyring` (service `lazytoggl`). Never
-  written to the config file. `TOGGL_API_TOKEN` env var respected as an override for
-  keychain-less environments.
-- **Config file:** `~/.config/lazytoggl/config.json` — non-secret settings only
-  (`workspace_id`, future preferences). Created with 0600.
+- **API token:** OS keychain via `zalando/go-keyring` (service `lazytoggl`), written by
+  `internal/config.SaveToken`. Never written to the config file. `$TOGGL_API_TOKEN`
+  overrides the keychain when set (checked first in `config.LoadToken`), for
+  headless/dev use.
+- **Config file:** `os.UserConfigDir()/lazytoggl/config.json` (e.g.
+  `~/Library/Application Support/lazytoggl/config.json` on macOS) — non-secret settings
+  only (`workspace_id`, future preferences). Created with 0600.
+- **Onboarding** (`internal/ui/onboard`): a standalone `tea.Program`, run once from
+  `main.go` before the main app, when no token is found. It collects the token,
+  validates it via `Client.Me`, and returns the token plus the authenticated `Me` —
+  `main.go` then saves both and launches the real app. Kept separate from `ui.Model` so
+  onboarding state never leaks into the main app's state machine.
+- **`-mock` flag:** bypasses config/keychain/onboarding entirely and runs directly
+  against `toggl.NewMock()`, for UX work and demos without a real account.

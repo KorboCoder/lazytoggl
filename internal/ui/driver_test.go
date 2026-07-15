@@ -362,7 +362,7 @@ func TestDeleteCancelAndConfirm(t *testing.T) {
 
 func TestDialogSwallowsGlobalKeys(t *testing.T) {
 	d := newDriver(t)
-	d.key("c")               // open start dialog
+	d.key("c")                // open start dialog
 	d.keys("qcder", " ", "x") // global keys and space — all just text here
 
 	d.dialogContains("qcder x")

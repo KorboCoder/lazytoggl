@@ -3,14 +3,26 @@
 A lazygit-style TUI for [Toggl Track](https://toggl.com/track/), built with Go and
 [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 
-**Status: Phase 1 — UI prototype.** The app runs entirely on mock data; no Toggl
-API calls are made yet. See [docs/PLAN.md](docs/PLAN.md) for the roadmap.
+**Status: Phase 2 — MVP.** Talks to the real Toggl API. See [docs/PLAN.md](docs/PLAN.md)
+for the roadmap.
 
 ## Run
 
 ```sh
 go run .
 ```
+
+On first run, it prompts for your Toggl API token (find it at
+track.toggl.com → Profile settings → API Token), validates it, and stores it in your
+OS keychain — it's never written to disk in plaintext. Subsequent runs skip this.
+
+To run against seeded fake data instead of the real API (no account needed):
+
+```sh
+go run . -mock
+```
+
+`$TOGGL_API_TOKEN` overrides the keychain if set, for headless/dev use.
 
 ## Test
 
