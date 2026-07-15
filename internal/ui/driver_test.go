@@ -46,13 +46,15 @@ func fixtureEntries() []toggl.TimeEntry {
 }
 
 type driver struct {
-	t *testing.T
-	m Model
+	t    *testing.T
+	m    Model
+	mock *toggl.Mock
 }
 
 func newDriver(t *testing.T) *driver {
 	t.Helper()
-	d := &driver{t: t, m: New(toggl.NewMock())}
+	mock := toggl.NewMock()
+	d := &driver{t: t, m: New(mock), mock: mock}
 	mm, _ := d.m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	d.m = mm.(Model)
 	mm, _ = d.m.Update(tickMsg(fixedNow)) // discard the re-arm tick cmd
@@ -389,6 +391,73 @@ func TestRefreshReloadsFromService(t *testing.T) {
 	}
 	if d.m.loading {
 		t.Fatal("still marked loading after refresh completed")
+	}
+
+	// Budget: a refresh costs exactly one request. Projects are fetched once
+	// per session (at startup), and the session's map is reused — every
+	// request counts against Toggl's 30/hour Free-plan quota.
+	if got := d.mock.Calls("RecentEntries"); got != 1 {
+		t.Fatalf("RecentEntries called %d times, want 1", got)
+	}
+	if got := d.mock.Calls("Projects"); got != 0 {
+		t.Fatalf("Projects called %d times on refresh, want 0 — refresh must reuse the session's projects", got)
+	}
+	if len(d.m.projects) != 2 {
+		t.Fatalf("projects map lost on refresh: %d entries, want the 2 fixtures kept", len(d.m.projects))
+	}
+}
+
+// The API-error notice: a floating popup that can't be missed or silently
+// overwritten the way the one-line status can.
+
+func TestAPIErrorShowsNoticePopup(t *testing.T) {
+	d := newDriver(t)
+	d.feed(errMsg{errors.New("boom failure")})
+
+	view := d.m.View()
+	for _, want := range []string{"API error", "boom failure", "esc to dismiss"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q after an API error:\n%s", want, view)
+		}
+	}
+
+	d.key("esc")
+	if strings.Contains(d.m.View(), "API error") {
+		t.Fatal("notice still visible after esc")
+	}
+}
+
+func TestRateLimitNoticeExplainsQuota(t *testing.T) {
+	d := newDriver(t)
+	d.feed(errMsg{toggl.ErrRateLimited})
+	if !strings.Contains(d.m.View(), "30 requests/hour") {
+		t.Fatalf("rate-limit notice does not explain the quota:\n%s", d.m.View())
+	}
+}
+
+func TestNoticeClearsOnNextSuccess(t *testing.T) {
+	d := newDriver(t)
+	d.feed(errMsg{errors.New("transient blip")})
+	d.key(" ") // successful pause round-trip through the mock
+	if strings.Contains(d.m.View(), "API error") {
+		t.Fatal("notice still visible after a successful API call")
+	}
+}
+
+func TestNoticeAutoExpires(t *testing.T) {
+	d := newDriver(t)
+	d.feed(errMsg{errors.New("stale error")})
+
+	mm, _ := d.m.Update(tickMsg(fixedNow.Add(noticeTTL / 2)))
+	d.m = mm.(Model)
+	if !strings.Contains(d.m.View(), "API error") {
+		t.Fatal("notice expired too early")
+	}
+
+	mm, _ = d.m.Update(tickMsg(fixedNow.Add(noticeTTL + time.Second)))
+	d.m = mm.(Model)
+	if strings.Contains(d.m.View(), "API error") {
+		t.Fatal("notice still visible past its TTL")
 	}
 }
 

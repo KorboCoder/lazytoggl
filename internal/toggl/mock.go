@@ -20,6 +20,25 @@ type Mock struct {
 	entries  []TimeEntry
 	projects []Project
 	nextID   int64
+	calls    map[string]int
+}
+
+// Calls reports how many times the named method ("RecentEntries",
+// "Projects", …) has been invoked — lets tests assert the app's request
+// budget, which matters under Toggl's 30-requests/hour Free-plan limit.
+func (m *Mock) Calls(method string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.calls[method]
+}
+
+func (m *Mock) countCall(method string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.calls == nil {
+		m.calls = map[string]int{}
+	}
+	m.calls[method]++
 }
 
 func NewMock() *Mock {
@@ -55,11 +74,13 @@ func NewMock() *Mock {
 }
 
 func (m *Mock) Me(ctx context.Context) (Me, error) {
+	m.countCall("Me")
 	time.Sleep(mockLatency)
 	return Me{ID: 42, Fullname: "Mock User", DefaultWorkspaceID: 1}, nil
 }
 
 func (m *Mock) RecentEntries(ctx context.Context) ([]TimeEntry, error) {
+	m.countCall("RecentEntries")
 	time.Sleep(mockLatency)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -69,6 +90,7 @@ func (m *Mock) RecentEntries(ctx context.Context) ([]TimeEntry, error) {
 }
 
 func (m *Mock) Projects(ctx context.Context) ([]Project, error) {
+	m.countCall("Projects")
 	time.Sleep(mockLatency)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -76,6 +98,7 @@ func (m *Mock) Projects(ctx context.Context) ([]Project, error) {
 }
 
 func (m *Mock) Start(ctx context.Context, req StartRequest) (TimeEntry, error) {
+	m.countCall("Start")
 	time.Sleep(mockLatency)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -91,6 +114,7 @@ func (m *Mock) Start(ctx context.Context, req StartRequest) (TimeEntry, error) {
 }
 
 func (m *Mock) Stop(ctx context.Context, entryID int64) (TimeEntry, error) {
+	m.countCall("Stop")
 	time.Sleep(mockLatency)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -108,6 +132,7 @@ func (m *Mock) Stop(ctx context.Context, entryID int64) (TimeEntry, error) {
 }
 
 func (m *Mock) Update(ctx context.Context, entry TimeEntry) (TimeEntry, error) {
+	m.countCall("Update")
 	time.Sleep(mockLatency)
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -126,6 +151,7 @@ func (m *Mock) Update(ctx context.Context, entry TimeEntry) (TimeEntry, error) {
 }
 
 func (m *Mock) Delete(ctx context.Context, entryID int64) error {
+	m.countCall("Delete")
 	time.Sleep(mockLatency)
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -79,3 +79,6 @@ pickers, reports, multi-workspace, and beyond.
 | Running-entry detection | `stop == null` only, never the API's negative `duration` | The exact negative-duration convention for running entries is undocumented; `stop` nullability is the one signal confirmed across Toggl's own docs |
 | `GET /me/time_entries` response shape | Decode defensively: try a bare array, fall back to `{"items": [...]}` | Toggl's own docs disagree on which shape this endpoint returns; couldn't be confirmed ahead of integration |
 | Projects list | Never filtered by `active` | A past entry can reference an archived project; filtering it out of the lookup map would show "—" instead of its real name |
+| Retry policy | Exponential backoff (500ms→1s→2s), max 3 attempts, transient failures only; 402/4xx never retry | Live rate-limit hit (2026-07-15): bounded retries for flaky networks without ever burning quota on an exhausted rate limit |
+| Projects per session | Fetched once at startup; `r` refetches entries only | Live rate-limit hit (2026-07-15): halves the refresh cost against the 30/hour Free-plan quota |
+| API errors | Floating top-right popup (esc dismiss, 10s TTL) in addition to the status bar | Live rate-limit hit (2026-07-15): status-bar-only errors were too easy to miss |

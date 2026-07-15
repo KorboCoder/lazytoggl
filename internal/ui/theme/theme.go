@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -119,4 +120,25 @@ func Pad(n int) string {
 		return ""
 	}
 	return strings.Repeat(" ", n)
+}
+
+// Overlay composites fg on top of bg with fg's top-left corner at cell
+// column x, row y — used for the floating API-error notice. Splicing is
+// ANSI-aware (styled cells count as their display width), and a style reset
+// is inserted at the left seam so background styling can't bleed into the
+// overlaid box.
+func Overlay(bg, fg string, x, y int) string {
+	bgLines := strings.Split(bg, "\n")
+	for i, fgLine := range strings.Split(fg, "\n") {
+		row := y + i
+		if row < 0 || row >= len(bgLines) {
+			continue
+		}
+		line := bgLines[row]
+		left := ansi.Truncate(line, x, "")
+		pad := Pad(x - lipgloss.Width(left))
+		right := ansi.TruncateLeft(line, x+lipgloss.Width(fgLine), "")
+		bgLines[row] = left + "\x1b[0m" + pad + fgLine + right
+	}
+	return strings.Join(bgLines, "\n")
 }

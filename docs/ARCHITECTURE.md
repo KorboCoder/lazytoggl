@@ -112,10 +112,28 @@ Design consequences (these are architectural constraints, not optimizations):
    response updates local state; never refetch after a mutation.
 3. `workspace_id` (from onboarding's `GET /me`) is cached in the config file so later
    launches skip `/me` entirely.
-4. On HTTP 402: status-bar "rate limited — try again later" message; no automatic retries.
+4. **Projects are fetched once per session** (at startup). A manual refresh (`r`)
+   refetches entries only and reuses the session's project map — so startup costs 2
+   requests and each refresh costs 1. (New projects created mid-session on the web app
+   appear after a restart.)
+5. On HTTP 402: never retried automatically (retrying an exhausted hourly quota just
+   burns more of it), surfaced prominently via the error notice (below).
 
-Typical day budget: 1 startup fetch + ~10–20 start/stop/edit actions ≈ well under limits,
-as long as nothing polls.
+**Retry policy** (`client.go`): transient failures — network errors, 5xx, 408, 429 —
+retry with exponential backoff (500ms → 1s → 2s), hard-capped at 3 total attempts so
+retries can never run indefinitely. Deterministic failures (400s, 402 rate limits,
+401/403 auth) never retry. A retried POST resends the identical body.
+
+**Error notice UI** (`app.go`): any failed API call raises a floating red-bordered
+popup in the top-right corner (composited over the panels via `theme.Overlay`,
+ANSI-aware splicing) in addition to the status-bar line, so errors can't be missed or
+silently overwritten by the next status change. Rate-limit errors get a message
+explaining the Free-plan quota. Dismissed with `esc`, cleared by the next successful
+API call, or auto-expires after 10s.
+
+Typical day budget: 2 startup requests + ~10–20 start/stop/edit actions ≈ well under
+limits, as long as nothing polls. Note when testing: repeated launches add up fast —
+each launch costs 2 requests against the 30/hour window.
 
 ## Config & secrets
 

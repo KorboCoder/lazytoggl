@@ -3,6 +3,7 @@ package toggl
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,6 +23,7 @@ func newTestClient(t *testing.T, handler http.HandlerFunc) (*Client, *[]*http.Re
 	c := NewClient("test-token")
 	c.baseURL = srv.URL
 	c.workspaceID = 555
+	c.retryBackoff = time.Millisecond // keep retry tests fast
 	return c, &requests
 }
 
@@ -288,5 +290,100 @@ func TestOtherErrorReturnsAPIError(t *testing.T) {
 	}
 	if apiErr.StatusCode != 500 || apiErr.Body != "boom" {
 		t.Fatalf("APIError = %+v, want status 500 body 'boom'", apiErr)
+	}
+}
+
+// Retry policy tests. The invariants: transient failures retry with backoff,
+// retries are hard-capped at maxAttempts, and deterministic failures — most
+// importantly 402 rate limiting — never retry at all.
+
+func TestRetriesTransient5xxThenSucceeds(t *testing.T) {
+	calls := 0
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls < 3 {
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		writeJSON(w, 200, map[string]any{"id": 1, "default_workspace_id": 9})
+	})
+	me, err := c.Me(context.Background())
+	if err != nil {
+		t.Fatalf("Me after transient failures: %v", err)
+	}
+	if me.DefaultWorkspaceID != 9 {
+		t.Fatalf("Me = %+v, want workspace 9 from the eventual success", me)
+	}
+	if calls != 3 {
+		t.Fatalf("server saw %d requests, want 3 (two failures + success)", calls)
+	}
+}
+
+func TestRetriesAreCappedAtMaxAttempts(t *testing.T) {
+	calls := 0
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	_, err := c.Me(context.Background())
+	if err == nil {
+		t.Fatal("want an error after exhausting retries")
+	}
+	if calls != maxAttempts {
+		t.Fatalf("server saw %d requests, want exactly %d — retries must not run indefinitely", calls, maxAttempts)
+	}
+}
+
+func TestRateLimit402NeverRetries(t *testing.T) {
+	calls := 0
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusPaymentRequired)
+	})
+	_, err := c.Me(context.Background())
+	if err != ErrRateLimited {
+		t.Fatalf("err = %v, want ErrRateLimited", err)
+	}
+	if calls != 1 {
+		t.Fatalf("server saw %d requests, want 1 — retrying an exhausted quota burns more of it", calls)
+	}
+}
+
+func TestBadRequest400NeverRetries(t *testing.T) {
+	calls := 0
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("start_date and end_date are both required"))
+	})
+	_, err := c.RecentEntries(context.Background())
+	if err == nil {
+		t.Fatal("want an error for a 400")
+	}
+	if calls != 1 {
+		t.Fatalf("server saw %d requests, want 1 — 400s are deterministic and must not retry", calls)
+	}
+}
+
+func TestRetriedPostResendsFullBody(t *testing.T) {
+	var bodies []string
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		if len(bodies) < 2 {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, 200, map[string]any{
+			"id": 1, "workspace_id": 555, "description": "retry me",
+			"start": "2026-07-15T10:00:00Z", "stop": nil, "duration": -1,
+		})
+	})
+	_, err := c.Start(context.Background(), StartRequest{Description: "retry me"})
+	if err != nil {
+		t.Fatalf("Start after transient failure: %v", err)
+	}
+	if len(bodies) != 2 || bodies[0] != bodies[1] || bodies[1] == "" {
+		t.Fatalf("retried request must resend the identical body; got %q then %q", bodies[0], bodies[1])
 	}
 }

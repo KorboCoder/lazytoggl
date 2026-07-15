@@ -44,17 +44,19 @@ func (e *APIError) Error() string {
 // with HTTP Basic auth using the API token as the username and the literal
 // string "api_token" as the password — Toggl's documented convention.
 type Client struct {
-	apiToken    string
-	workspaceID int64
-	httpClient  *http.Client
-	baseURL     string
+	apiToken     string
+	workspaceID  int64
+	httpClient   *http.Client
+	baseURL      string
+	retryBackoff time.Duration // first retry delay; doubles per attempt
 }
 
 func NewClient(apiToken string) *Client {
 	return &Client{
-		apiToken:   apiToken,
-		httpClient: &http.Client{Timeout: 15 * time.Second},
-		baseURL:    defaultBaseURL,
+		apiToken:     apiToken,
+		httpClient:   &http.Client{Timeout: 15 * time.Second},
+		baseURL:      defaultBaseURL,
+		retryBackoff: 500 * time.Millisecond,
 	}
 }
 
@@ -197,46 +199,90 @@ func (c *Client) Delete(ctx context.Context, entryID int64) error {
 	return err
 }
 
+// Retry policy: transient failures only (network errors, 5xx, 408/429) are
+// retried, with exponential backoff and a hard attempt cap so retries can
+// never run indefinitely. Deterministic failures (400s) are never retried,
+// and neither is 402 rate limiting — automatic retries against an exhausted
+// hourly quota would just burn more of it.
+const maxAttempts = 3
+
 // do sends a request and returns the raw response body on 2xx, or a typed
 // error (ErrRateLimited, ErrInvalidToken, *APIError) otherwise.
 func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte, error) {
-	var reqBody io.Reader
+	var payload []byte
 	if body != nil {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("toggl: encoding request: %w", err)
 		}
-		reqBody = bytes.NewReader(b)
+		payload = b
+	}
+
+	backoff := c.retryBackoff
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(backoff):
+			}
+			backoff *= 2
+		}
+		respBody, retryable, err := c.attempt(ctx, method, path, payload, body != nil)
+		if err == nil {
+			return respBody, nil
+		}
+		lastErr = err
+		if !retryable {
+			return nil, err
+		}
+	}
+	return nil, lastErr
+}
+
+// attempt performs one HTTP round trip. retryable reports whether the
+// failure is transient and worth another attempt.
+func (c *Client) attempt(ctx context.Context, method, path string, payload []byte, hasBody bool) (respBody []byte, retryable bool, err error) {
+	var reqBody io.Reader
+	if hasBody {
+		reqBody = bytes.NewReader(payload)
 	}
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("toggl: building request: %w", err)
+		return nil, false, fmt.Errorf("toggl: building request: %w", err)
 	}
 	req.SetBasicAuth(c.apiToken, "api_token")
 	req.Header.Set("Accept", "application/json")
-	if body != nil {
+	if hasBody {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("toggl: request failed: %w", err)
+		return nil, true, fmt.Errorf("toggl: request failed: %w", err)
 	}
 	defer resp.Body.Close()
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err = io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("toggl: reading response: %w", err)
+		return nil, true, fmt.Errorf("toggl: reading response: %w", err)
 	}
 
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
-		return respBody, nil
-	case http.StatusPaymentRequired:
-		return nil, ErrRateLimited
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return nil, ErrInvalidToken
+	switch {
+	case resp.StatusCode == http.StatusOK ||
+		resp.StatusCode == http.StatusCreated ||
+		resp.StatusCode == http.StatusNoContent:
+		return respBody, false, nil
+	case resp.StatusCode == http.StatusPaymentRequired:
+		return nil, false, ErrRateLimited
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		return nil, false, ErrInvalidToken
+	case resp.StatusCode == http.StatusRequestTimeout ||
+		resp.StatusCode == http.StatusTooManyRequests ||
+		resp.StatusCode >= http.StatusInternalServerError:
+		return nil, true, &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
 	default:
-		return nil, &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
+		return nil, false, &APIError{StatusCode: resp.StatusCode, Body: strings.TrimSpace(string(respBody))}
 	}
 }
 

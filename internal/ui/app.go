@@ -6,6 +6,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -48,7 +49,17 @@ type Model struct {
 	loading       bool
 	status        string
 	statusErr     bool
+
+	// notice is the floating corner popup shown when an API call fails —
+	// unlike the one-line status it can't be missed or silently overwritten
+	// by the next status change. Cleared by esc, by any successful API
+	// response, or when noticeExpiry passes.
+	notice       string
+	noticeExpiry time.Time
 }
+
+// noticeTTL is how long the API-error popup stays up if not dismissed.
+const noticeTTL = 10 * time.Second
 
 func New(svc toggl.Service) Model {
 	return Model{
@@ -84,7 +95,7 @@ func tickCmd() tea.Cmd {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.loadCmd(), tickCmd())
+	return tea.Batch(m.loadCmd(true), tickCmd())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -96,14 +107,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		m.now = time.Time(msg)
+		if m.notice != "" && m.now.After(m.noticeExpiry) {
+			m.notice = ""
+		}
 		return m, tickCmd()
 
 	case dataLoadedMsg:
 		m.loading = false
+		m.notice = ""
 		m.entries = msg.entries
-		m.projects = map[int64]toggl.Project{}
-		for _, p := range msg.projects {
-			m.projects[p.ID] = p
+		// A refresh reuses the session's project map (projects rarely change
+		// and every request counts against the hourly quota); msg.projects
+		// is non-nil only on the initial load.
+		if msg.projects != nil {
+			m.projects = map[int64]toggl.Project{}
+			for _, p := range msg.projects {
+				m.projects[p.ID] = p
+			}
 		}
 		m.setStatus("", false)
 		m.clampCursor()
@@ -120,23 +140,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.entries = append([]toggl.TimeEntry{msg.entry}, m.entries...)
 		m.pausedID = 0
+		m.notice = ""
 		m.setStatus("timer started", false)
 		m.clampCursor()
 		return m, nil
 
 	case entryStoppedMsg:
 		m.replaceEntry(msg.entry)
+		m.notice = ""
 		m.setStatus("timer stopped", false)
 		return m, nil
 
 	case entryPausedMsg:
 		m.replaceEntry(msg.entry)
 		m.pausedID = msg.entry.ID
+		m.notice = ""
 		m.setStatus("paused", false)
 		return m, nil
 
 	case entryUpdatedMsg:
 		m.replaceEntry(msg.entry)
+		m.notice = ""
 		m.setStatus("entry saved", false)
 		return m, nil
 
@@ -150,12 +174,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.id == m.pausedID {
 			m.pausedID = 0
 		}
+		m.notice = ""
 		m.setStatus("entry deleted", false)
 		m.clampCursor()
 		return m, nil
 
 	case errMsg:
 		m.loading = false
+		text := msg.err.Error()
+		if errors.Is(msg.err, toggl.ErrRateLimited) {
+			text = "Rate limited by Toggl — the Free plan allows 30 requests/hour. Wait a bit before retrying."
+		}
+		m.notice = text
+		m.noticeExpiry = m.now.Add(noticeTTL)
 		m.setStatus(msg.err.Error(), true)
 		return m, nil
 
@@ -204,6 +235,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	rows := panels.BuildRows(m.entries, m.now)
 
 	switch {
+	case msg.String() == "esc":
+		m.notice = ""
+		return m, nil
+
 	case key.Matches(msg, m.keys.Quit):
 		return m, tea.Quit
 
@@ -222,7 +257,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Refresh):
 		m.loading = true
 		m.setStatus("refreshing…", false)
-		return m, m.loadCmd()
+		return m, m.loadCmd(false)
 
 	case key.Matches(msg, m.keys.Up):
 		m.entriesPanel.Move(rows, -1)
@@ -348,12 +383,36 @@ func (m Model) View() string {
 	entriesView := m.entriesPanel.View(rows, m.projects, m.now, m.width, entriesH,
 		m.loading, m.focus == focusEntries)
 
-	main := lipgloss.JoinVertical(lipgloss.Left, timer, entriesView, statusLine, helpView)
+	view := lipgloss.JoinVertical(lipgloss.Left, timer, entriesView, statusLine, helpView)
 
 	if m.dialog != nil {
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.dialog.View())
+		view = lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.dialog.View())
 	}
-	return main
+	if m.notice != "" {
+		box := m.noticeView()
+		x := m.width - lipgloss.Width(box) - 1
+		if x > 0 {
+			view = theme.Overlay(view, box, x, 1)
+		}
+	}
+	return view
+}
+
+// noticeView renders the floating API-error popup for the top-right corner.
+func (m Model) noticeView() string {
+	w := 44
+	if max := m.width - 8; w > max {
+		w = max
+	}
+	content := theme.ErrStyle.Render("⚠ API error") + "\n" +
+		m.notice + "\n" +
+		theme.MutedStyle.Render("esc to dismiss")
+	return lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(theme.Red).
+		Padding(0, 1).
+		Width(w).
+		Render(content)
 }
 
 // Helpers.
@@ -410,7 +469,10 @@ func (m Model) projectName(id int64) string {
 
 // Commands (async service calls).
 
-func (m Model) loadCmd() tea.Cmd {
+// loadCmd fetches entries, plus projects on the initial load only — a
+// refresh reuses the session's project map so it costs one request instead
+// of two against the hourly quota.
+func (m Model) loadCmd(withProjects bool) tea.Cmd {
 	svc := m.svc
 	return func() tea.Msg {
 		ctx := context.Background()
@@ -418,11 +480,15 @@ func (m Model) loadCmd() tea.Cmd {
 		if err != nil {
 			return errMsg{err}
 		}
-		projects, err := svc.Projects(ctx)
-		if err != nil {
-			return errMsg{err}
+		msg := dataLoadedMsg{entries: entries}
+		if withProjects {
+			projects, err := svc.Projects(ctx)
+			if err != nil {
+				return errMsg{err}
+			}
+			msg.projects = projects
 		}
-		return dataLoadedMsg{entries: entries, projects: projects}
+		return msg
 	}
 }
 
