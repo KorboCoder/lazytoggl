@@ -128,3 +128,35 @@ func TestRecentEntriesNewestFirst(t *testing.T) {
 		}
 	}
 }
+
+// The mock returns the same window the real client asks for, so a moved
+// entry drops off on refresh under -mock just as it does live.
+func TestMockRecentEntriesFiltersToWindow(t *testing.T) {
+	m := NewMock()
+	now := time.Now()
+	old := now.Add(-RecentEntriesLookback - time.Hour)
+	future := now.Add(2 * time.Hour)
+	m.entries = append(m.entries,
+		TimeEntry{ID: 900, Description: "too old", Start: old, Stop: old.Add(time.Hour), Duration: 3600},
+		TimeEntry{ID: 901, Description: "future", Start: future, Stop: future.Add(time.Hour), Duration: 3600},
+		TimeEntry{ID: 902, Description: "edge of window", Start: now.Add(-RecentEntriesLookback + time.Hour),
+			Stop: now.Add(-RecentEntriesLookback + 2*time.Hour), Duration: 3600},
+	)
+	entries, err := m.RecentEntries(context.Background())
+	if err != nil {
+		t.Fatalf("RecentEntries: %v", err)
+	}
+	got := map[int64]bool{}
+	for _, e := range entries {
+		got[e.ID] = true
+	}
+	if got[900] || got[901] {
+		t.Fatalf("entries outside the window returned: %v", got)
+	}
+	if !got[902] {
+		t.Fatal("entry inside the window missing")
+	}
+	if !got[1] {
+		t.Fatal("running entry missing")
+	}
+}

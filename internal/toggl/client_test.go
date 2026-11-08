@@ -214,6 +214,22 @@ func TestRecentEntriesSortsNewestFirstAndSendsLookbackWindow(t *testing.T) {
 	if req.URL.Query().Get("end_date") == "" {
 		t.Fatal("request missing end_date — the API requires it alongside start_date")
 	}
+	// The window is exactly the exported lookback, so the UI's idea of
+	// "outside the list" (RecentEntriesSince) matches what refresh returns.
+	start, err := time.Parse(time.RFC3339, req.URL.Query().Get("start_date"))
+	if err != nil {
+		t.Fatalf("start_date: %v", err)
+	}
+	end, err := time.Parse(time.RFC3339, req.URL.Query().Get("end_date"))
+	if err != nil {
+		t.Fatalf("end_date: %v", err)
+	}
+	if RecentEntriesLookback != 8*24*time.Hour {
+		t.Fatalf("RecentEntriesLookback = %s, want 192h", RecentEntriesLookback)
+	}
+	if !RecentEntriesSince(end).Equal(start) {
+		t.Fatalf("start_date = %s, want RecentEntriesSince(end_date) = %s", start, RecentEntriesSince(end))
+	}
 }
 
 // TestRecentEntriesToleratesItemsEnvelope covers the case where the API

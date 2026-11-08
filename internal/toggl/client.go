@@ -17,10 +17,6 @@ import (
 const (
 	defaultBaseURL = "https://api.track.toggl.com/api/v9"
 	createdWith    = "lazytoggl"
-	// recentEntriesLookback bounds the GET /me/time_entries window so a
-	// fresh account with years of history doesn't pull it all down; it
-	// covers "today" plus enough trailing days for the entries list.
-	recentEntriesLookback = 8 * 24 * time.Hour
 )
 
 // ErrRateLimited is returned when Toggl responds 402, which on the Free plan
@@ -96,7 +92,7 @@ func (c *Client) RecentEntries(ctx context.Context) ([]TimeEntry, error) {
 	q := url.Values{}
 	// The API rejects start_date without end_date (and vice versa) with a
 	// 400 — they're required together, confirmed live against the real API.
-	q.Set("start_date", now.Add(-recentEntriesLookback).Format(time.RFC3339))
+	q.Set("start_date", RecentEntriesSince(now).Format(time.RFC3339))
 	q.Set("end_date", now.Format(time.RFC3339))
 	raw, err := c.do(ctx, http.MethodGet, "/me/time_entries?"+q.Encode(), nil)
 	if err != nil {

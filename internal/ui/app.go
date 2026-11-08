@@ -7,6 +7,8 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sort"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -160,8 +162,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case entryUpdatedMsg:
 		m.replaceEntry(msg.entry)
+		// An edit can move the entry to another day; keep it selected.
+		m.entriesPanel.SelectID(panels.BuildRows(m.entries, m.now), msg.entry.ID)
 		m.notice = ""
-		m.setStatus("entry saved", false)
+		m.setStatus(savedStatus(msg.entry, m.now), false)
 		return m, nil
 
 	case entryDeletedMsg:
@@ -426,14 +430,34 @@ func (m *Model) clampCursor() {
 	m.entriesPanel.Clamp(panels.BuildRows(m.entries, m.now))
 }
 
+// replaceEntry patches e into m.entries and keeps them newest-first, which
+// panels.BuildRows relies on to group days: an edit can move an entry's
+// start anywhere, even to another day.
+// savedStatus is the status after an edit. An entry moved before the
+// fetch window stays listed for now but won't come back on refresh, so say
+// so rather than let it vanish unexplained.
+func savedStatus(e toggl.TimeEntry, now time.Time) string {
+	if !e.Start.Before(toggl.RecentEntriesSince(now)) {
+		return "entry saved"
+	}
+	days := int(toggl.RecentEntriesLookback / (24 * time.Hour))
+	return fmt.Sprintf("entry saved — moved to %s, outside the %d-day list; it drops off on refresh",
+		e.Start.Local().Format("Mon, Jan 2"), days)
+}
+
 func (m *Model) replaceEntry(e toggl.TimeEntry) {
+	found := false
 	for i := range m.entries {
 		if m.entries[i].ID == e.ID {
 			m.entries[i] = e
-			return
+			found = true
+			break
 		}
 	}
-	m.entries = append([]toggl.TimeEntry{e}, m.entries...)
+	if !found {
+		m.entries = append([]toggl.TimeEntry{e}, m.entries...)
+	}
+	sort.SliceStable(m.entries, func(i, j int) bool { return m.entries[i].Start.After(m.entries[j].Start) })
 }
 
 func (m Model) runningEntry() *toggl.TimeEntry {

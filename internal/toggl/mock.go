@@ -84,7 +84,16 @@ func (m *Mock) RecentEntries(ctx context.Context) ([]TimeEntry, error) {
 	time.Sleep(mockLatency)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := append([]TimeEntry(nil), m.entries...)
+	// Mirror the real client's start_date/end_date window, keeping the
+	// running entry whatever its start.
+	now := time.Now()
+	since := RecentEntriesSince(now)
+	var out []TimeEntry
+	for _, e := range m.entries {
+		if e.Running() || (!e.Start.Before(since) && !e.Start.After(now)) {
+			out = append(out, e)
+		}
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Start.After(out[j].Start) })
 	return out, nil
 }

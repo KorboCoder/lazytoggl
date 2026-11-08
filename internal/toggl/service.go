@@ -1,6 +1,19 @@
 package toggl
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// RecentEntriesLookback bounds the RecentEntries window so a fresh account
+// with years of history doesn't pull it all down; it covers "today" plus
+// enough trailing days for the entries list. Every Service implementation
+// returns entries starting within [RecentEntriesSince(now), now].
+const RecentEntriesLookback = 8 * 24 * time.Hour
+
+// RecentEntriesSince is the start of the RecentEntries window at now. An
+// entry that starts earlier drops out of the list on the next refresh.
+func RecentEntriesSince(now time.Time) time.Time { return now.Add(-RecentEntriesLookback) }
 
 // StartRequest describes a new time entry to start.
 type StartRequest struct {
