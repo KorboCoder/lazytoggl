@@ -80,8 +80,9 @@ by hand is kept. An entry is never shorter than 1 minute (Toggl rejects zero-len
 entries): a time that would cross the other end lands 1 minute from it. No date goes past
 today. A running entry's stop and duration can't be edited, its start can be at most 1
 minute before now, and its start date no earlier than 7 days ago (so a refresh still
-finds it). A finished entry can move before the list's 8-day window: the review marks
-it `(outside list)` and the status line warns that it drops off on the next refresh.
+finds it). A finished entry can move outside the list's window (before the last 8 days, or to a
+start later than now): the review marks it `(outside list)` and the status line warns
+that it drops off on the next refresh.
 
 ## UI sketch (draft — refined during the Phase 1 prototype)
 

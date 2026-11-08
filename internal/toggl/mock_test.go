@@ -160,3 +160,22 @@ func TestMockRecentEntriesFiltersToWindow(t *testing.T) {
 		t.Fatal("running entry missing")
 	}
 }
+
+func TestInRecentWindowBounds(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	since := RecentEntriesSince(now)
+	for _, c := range []struct {
+		start time.Time
+		want  bool
+	}{
+		{since, true},
+		{now, true},
+		{now.Add(-time.Hour), true},
+		{since.Add(-time.Second), false},
+		{now.Add(time.Second), false},
+	} {
+		if got := InRecentWindow(c.start, now); got != c.want {
+			t.Errorf("InRecentWindow(%s) = %v, want %v", c.start, got, c.want)
+		}
+	}
+}

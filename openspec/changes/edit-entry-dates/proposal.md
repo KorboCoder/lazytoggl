@@ -28,7 +28,8 @@ without adding anything to the common path of editing a time.
   date the user changed in the field is not re-resolved.
 - A **running entry's** start date can't move earlier than 7 days before today, so the
   next refresh still finds it.
-- A **finished entry can move before the list's fetch window**. The review marks it
+- A **finished entry can move outside the list's fetch window**: before its start, or
+  to a start later than now (the API's `end_date` is now). The review marks it
   `(outside list)`, and after saving the status line says it will drop off on the next
   refresh. Until then it stays in the list, so the move can be fixed.
 - The review shows dates on start and stop lines when a date changed.

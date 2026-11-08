@@ -75,10 +75,14 @@ In the review, a start or stop line SHALL show its date with the time when that 
 - **THEN** the review shows start `Sat 07 Nov 14:32 -> Fri 06 Nov 14:32` and stop `Sat 07 Nov 15:47 -> Fri 06 Nov 15:47`, and no duration line
 
 ### Requirement: Review flags moves outside the list
-When the edited start is earlier than the start of the list's fetch window, the review SHALL show `(outside list)` on the line below the start change.
+When the edited start is outside the list's fetch window (earlier than its start, or later than now), the review SHALL show `(outside list)` on the line below the start change.
 
 #### Scenario: Moved before the window
 - **WHEN** today is Sun 08 Nov and the user moves a finished entry's start to Mon 12 Oct and presses `esc`
+- **THEN** the review shows `(outside list)` below the start change
+
+#### Scenario: Moved after now
+- **WHEN** it is Sun 08 Nov 12:00 and the user steps a finished entry's start from Sat 07 Nov 15:00 to Sun 08 Nov and presses `esc`
 - **THEN** the review shows `(outside list)` below the start change
 
 #### Scenario: Within the window
@@ -97,11 +101,19 @@ After an edit is saved, the entries list SHALL show the entry under the day of i
 - **THEN** the moved entry is listed above the 11:00 entry, and the cursor is on it
 
 ### Requirement: Saving outside the list
-When a saved entry's start is earlier than the start of the list's fetch window, the status line SHALL say the entry was moved outside the list and will drop off on the next refresh. The entry SHALL stay in the list until the next refresh.
+When an edit moves an entry's start outside the list's fetch window (earlier than its start, or later than now), the status line SHALL say the entry is now outside the list and will drop off on the next refresh. The entry SHALL stay in the list until the next refresh. An edit that leaves the start unchanged SHALL NOT show this warning.
 
 #### Scenario: Status after moving out of the window
 - **WHEN** today is Sun 08 Nov and the user moves a finished entry to Mon 12 Oct and saves
 - **THEN** the status line says it moved to Mon 12 Oct, outside the list, and will drop off on refresh, and the entry is still listed under Mon 12 Oct
+
+#### Scenario: Status after moving past now
+- **WHEN** it is Sun 08 Nov 12:00 and the user moves a finished entry's start to Sun 08 Nov 15:00 and saves
+- **THEN** the status line says it starts after now, outside the list, and will drop off on refresh
+
+#### Scenario: Start unchanged
+- **WHEN** an entry's start was inside the window when the dialog opened but the window has since moved past it, and the user edits only its description and saves
+- **THEN** the status line says only that the entry was saved
 
 ## MODIFIED Requirements
 

@@ -435,11 +435,15 @@ func (m *Model) clampCursor() {
 }
 
 // savedStatus is the status after an edit. An entry whose start was moved
-// before the fetch window stays listed for now but won't come back on
-// refresh, so say so rather than let it vanish unexplained.
+// outside the fetch window (too old, or after now) stays listed for now but
+// won't come back on refresh, so say so rather than let it vanish
+// unexplained.
 func savedStatus(e toggl.TimeEntry, prevStart, now time.Time) string {
-	if e.Start.Equal(prevStart) || !e.Start.Before(toggl.RecentEntriesSince(now)) {
+	if e.Start.Equal(prevStart) || toggl.InRecentWindow(e.Start, now) {
 		return "entry saved"
+	}
+	if e.Start.After(now) {
+		return "entry saved — starts after now, outside the list; it drops off on refresh"
 	}
 	days := int(toggl.RecentEntriesLookback / (24 * time.Hour))
 	return fmt.Sprintf("entry saved — moved to %s, outside the %d-day list; it drops off on refresh",

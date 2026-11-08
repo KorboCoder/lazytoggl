@@ -114,18 +114,20 @@ time, as today.
 
 `changes()` formats a start or stop line with `dateLayout + " " + HH:MM` on both sides
 when the before and after dates differ, and as `HH:MM` otherwise, so existing review
-scenarios are unchanged. When the new start is before the window start, a muted
-`(outside list)` line follows the start line, indented under the values. A dated line
+scenarios are unchanged. When the new start is outside the window (before its start
+or after now), a muted `(outside list)` line follows the start line, indented under the values. A dated line
 is 12 + 36 columns, which fits the 56-wide box; the flag would not fit on the same line.
 
 ### 5. The window is a `toggl` package value, not a `Service` method
 
-Export the lookback from `internal/toggl` (`RecentEntriesLookback`) with a helper
-`RecentEntriesSince(now time.Time) time.Time`. `Edit` (review flag) and `app.go`
-(status line) both call the helper with their `now`, and the client uses it to build
-`start_date`. The mock's `RecentEntries` filters to `[RecentEntriesSince(now), now]`
-by start, plus the running entry, so `-mock` shows a moved entry dropping off on `r`
-just like the real API.
+Export the lookback from `internal/toggl` (`RecentEntriesLookback`) with helpers
+`RecentEntriesSince(now time.Time) time.Time` and `InRecentWindow(start, now) bool`
+(start within `[RecentEntriesSince(now), now]`). The client uses `RecentEntriesSince`
+to build `start_date`. `Edit` (review flag), `app.go` (status line), and the mock's
+`RecentEntries` filter (plus the running entry) all use `InRecentWindow`, so the
+warning and `-mock`'s drop-off on `r` agree with each other and with the real API's
+`start_date`/`end_date`. That the API leaves out entries starting after `end_date` is
+assumed from the parameter, not confirmed live.
 
 *Alternative:* a `Service.Window()` method. Rejected: it isn't an API call, every
 implementation would return the same constant, and the interface is meant to list
@@ -141,10 +143,13 @@ panel's `View` already scrolls the cursor into view.
 
 ### 7. Save status
 
-On `entryUpdatedMsg`, if the saved start is before `RecentEntriesSince(m.now)`, the
-status reads: `entry saved — moved to Mon, Oct 12, outside the 8-day list; it drops off
-on refresh`. The day count comes from the lookback; the date uses the list's day-label
-format. Otherwise it stays `entry saved`.
+On `entryUpdatedMsg`, when the edit changed the start (compared with the entry before
+the save) and the saved start is outside the window, the status reads
+`entry saved — moved to Mon, Oct 12, outside the 8-day list; it drops off on refresh`
+for a start before the window, or `entry saved — starts after now, outside the list;
+it drops off on refresh` for one after now. The day count comes from the lookback; the
+date uses the list's day-label format. Otherwise it stays `entry saved`, including when
+the window slid past an entry whose start the edit didn't touch.
 
 ### 8. Field help and popup
 

@@ -87,10 +87,9 @@ func (m *Mock) RecentEntries(ctx context.Context) ([]TimeEntry, error) {
 	// Mirror the real client's start_date/end_date window, keeping the
 	// running entry whatever its start.
 	now := time.Now()
-	since := RecentEntriesSince(now)
 	var out []TimeEntry
 	for _, e := range m.entries {
-		if e.Running() || (!e.Start.Before(since) && !e.Start.After(now)) {
+		if e.Running() || InRecentWindow(e.Start, now) {
 			out = append(out, e)
 		}
 	}

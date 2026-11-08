@@ -15,6 +15,13 @@ const RecentEntriesLookback = 8 * 24 * time.Hour
 // entry that starts earlier drops out of the list on the next refresh.
 func RecentEntriesSince(now time.Time) time.Time { return now.Add(-RecentEntriesLookback) }
 
+// InRecentWindow reports whether an entry starting at start is in the
+// RecentEntries window at now. One that isn't (too old, or starting after
+// now: the API's end_date) drops out of the list on the next refresh.
+func InRecentWindow(start, now time.Time) bool {
+	return !start.Before(RecentEntriesSince(now)) && !start.After(now)
+}
+
 // StartRequest describes a new time entry to start.
 type StartRequest struct {
 	Description string

@@ -762,3 +762,26 @@ func TestEditSaveUnmovedEntryPlainStatus(t *testing.T) {
 		t.Fatalf("status = %q, want %q", d.m.status, "entry saved")
 	}
 }
+
+// A start later than now also leaves the list (the API's end_date is now).
+func TestEditReviewFlagsStartAfterNow(t *testing.T) {
+	d := openEditID3At(t, jul(13, 15, 0), jul(13, 16, 0))
+	stepStartDate(d, 1) // Tue 14 Jul 15:00, after fixedNow (12:00)
+	d.key("esc")
+	d.dialogContains("Tue 14 Jul 15:00")
+	d.dialogContains("(outside list)")
+}
+
+func TestEditSaveAfterNowShowsStatus(t *testing.T) {
+	d := openEditID3At(t, jul(13, 15, 0), jul(13, 16, 0))
+	stepStartDate(d, 1) // Tue 14 Jul 15:00, after fixedNow
+	d.keys("esc", "y")
+	for _, want := range []string{"starts after now", "outside the list", "drops off on refresh"} {
+		if !strings.Contains(d.m.status, want) {
+			t.Fatalf("status = %q, want it to contain %q", d.m.status, want)
+		}
+	}
+	if _, ok := d.entryByID(3); !ok {
+		t.Fatal("entry left the list before a refresh")
+	}
+}

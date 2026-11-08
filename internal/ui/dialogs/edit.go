@@ -365,7 +365,7 @@ func (d *Edit) reviewView() string {
 			continue
 		}
 		lines = append(lines, label+c.before+" -> "+c.after)
-		if c.label == "start" && d.start.Before(toggl.RecentEntriesSince(d.now)) {
+		if c.label == "start" && !toggl.InRecentWindow(d.start, d.now) {
 			// The next refresh won't fetch it; it's still saved in Toggl.
 			lines = append(lines, strings.Repeat(" ", 12)+theme.MutedStyle.Render("(outside list)"))
 		}

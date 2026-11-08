@@ -42,6 +42,14 @@ Overnight cases shift ID3 with a helper like `openEditID3Shifted`.
 - [x] 6.1 Run `go test -race ./...` and verify that it passes
 - [x] 6.2 Run `go run . -mock` and verify by hand: an overnight stop typed as `00:15` shows the next day live; `tab` → `ctrl+x` moves an entry to yesterday and it regroups with the cursor on it; stepping back 9 days shows `(outside list)` and the status message, and the entry drops off after `r`
 
+## 7. Entries starting after now (review follow-up)
+
+- [x] 7.1 Add `toggl.InRecentWindow(start, now)` and use it in `Mock.RecentEntries`. Verify with `TestInRecentWindowBounds` in `mock_test.go` (window start and now inclusive, a second either side excluded); `TestMockRecentEntriesFiltersToWindow` still passes
+- [x] 7.2 Flag a new start after now with `(outside list)` in the review, via `InRecentWindow`. Verify with `TestEditReviewFlagsStartAfterNow` in `edit_test.go` (ID3 moved to Mon 13 Jul 15:00, then stepped to Tue 14 Jul with `fixedNow` at 12:00); `TestEditReviewNoFlagInsideList` still passes
+- [x] 7.3 Warn on save for a start moved after now, and only when the start changed. Verify with `TestEditSaveAfterNowShowsStatus` and `TestEditSaveUnmovedEntryPlainStatus` in `edit_test.go`; `TestEditSaveOutsideListShowsStatus` still passes
+- [x] 7.4 Update `docs/REQUIREMENTS.md` (editing rules), `docs/ARCHITECTURE.md` (Recent entries row: `InRecentWindow`, `end_date` excludes later starts), and the `docs/PLAN.md` "Editing dates" row. Verify by reading each against the spec delta
+- [x] 7.5 Run `go test -race ./...` and `go run . -mock`: stepping an afternoon entry from yesterday to today shows `(outside list)` and the after-now status, and the entry drops off after `r`
+
 ## Workflow follow-up
 
 - Run superpowers:requesting-code-review once all tasks are checked.
