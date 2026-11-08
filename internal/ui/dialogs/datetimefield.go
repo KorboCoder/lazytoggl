@@ -19,7 +19,10 @@ type DateTimeField struct {
 	clockedV bool      // the time segment was edited (a digit or a step)
 	dated    bool      // the date was changed by hand
 	stepped  int       // net days stepped on the date segment
-	resolve  func(day time.Time, minutes int) time.Time
+	// typed is set by a typed digit and cleared by a step: only a typed
+	// time is placed by the resolver; a step's result is where it lands.
+	typed   bool
+	resolve func(day time.Time, minutes int) time.Time
 }
 
 // NewDateTimeField opens a field on t. lo and hi bound the value (a zero lo
@@ -43,7 +46,7 @@ func midnight(t time.Time) time.Time {
 // resolver chooses its day, until the date is changed by hand. Typed digits are
 // raw until enter, so it is only meaningful once the clock is in range.
 func (f DateTimeField) Value() time.Time {
-	if f.resolve != nil && f.clockedV && !f.dated && f.clock.valid() {
+	if f.resolve != nil && f.typed && !f.dated && f.clock.valid() {
 		return f.resolve(f.day, f.clock.Value())
 	}
 	return atClock(f.day, f.clock.Value())
@@ -62,9 +65,13 @@ func (f DateTimeField) Stepped() int { return f.stepped }
 
 func (f DateTimeField) Err() string { return f.clock.Err() }
 
-// stepDay moves the date by one day, unless that leaves the bounds.
+// stepDay moves the shown date by one day, unless that leaves the bounds.
 func (f *DateTimeField) stepDay(sign int) {
-	day := f.day.AddDate(0, 0, sign)
+	base := f.day
+	if f.clock.valid() {
+		base = midnight(f.Value()) // the date shown, which a typed time may have moved
+	}
+	day := base.AddDate(0, 0, sign)
 	if day.After(midnight(f.hi)) || (!f.lo.IsZero() && day.Before(midnight(f.lo))) {
 		return
 	}
@@ -109,24 +116,25 @@ func (f *DateTimeField) stepClock(sign int) {
 	if f.clock.Cursor() < 2 {
 		unit = 60
 	}
-	// time.Date normalizes minutes past either end of the day into the
-	// neighbouring date, on the wall clock.
+	// Step from the value shown, by real minutes, so a DST gap is stepped
+	// over and raw out-of-range digits (27:10) carry like any other time.
 	from := f.Value()
-	v := time.Date(from.Year(), from.Month(), from.Day(), 0, minutesOfDay(from)+sign*unit, 0, 0, time.Local)
+	v := from.Add(time.Duration(sign*unit) * time.Minute)
 	if v.After(f.hi) {
 		v = f.hi
 	}
 	if !f.lo.IsZero() && v.Before(f.lo) {
 		v = f.lo
 	}
-	// Only a carry changes the date by hand; otherwise the resolver keeps
-	// choosing the day, so a step and a typed digit agree.
-	if day := midnight(v); !day.Equal(midnight(from)) {
-		f.day = day
+	// The step's result is pinned; crossing midnight counts as changing
+	// the date by hand.
+	if !midnight(v).Equal(midnight(from)) {
 		f.dated = true
 	}
+	f.day = midnight(v)
 	f.clock.SetValue(minutesOfDay(v))
 	f.clockedV = true
+	f.typed = false
 }
 
 func (f DateTimeField) updateClock(k tea.KeyMsg) (DateTimeField, FieldResult) {
@@ -135,6 +143,7 @@ func (f DateTimeField) updateClock(k tea.KeyMsg) (DateTimeField, FieldResult) {
 	f.clock, res = f.clock.Update(k)
 	if f.clock.String() != before {
 		f.clockedV = true
+		f.typed = true
 	}
 	return f, res
 }
@@ -144,8 +153,9 @@ func (f DateTimeField) View() string {
 	if !f.clock.valid() {
 		date = f.day.Format(dateLayout)
 	}
+	// One cursor at a time, on the active segment.
 	if f.dateSeg {
-		date = theme.FieldCursorStyle.Render(date)
+		return theme.FieldCursorStyle.Render(date) + "  " + f.clock.String()
 	}
 	return date + "  " + f.clock.View()
 }

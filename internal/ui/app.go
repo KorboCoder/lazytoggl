@@ -161,11 +161,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case entryUpdatedMsg:
+		var prevStart time.Time
+		if prev, ok := m.entryByID(msg.entry.ID); ok {
+			prevStart = prev.Start
+		}
 		m.replaceEntry(msg.entry)
 		// An edit can move the entry to another day; keep it selected.
 		m.entriesPanel.SelectID(panels.BuildRows(m.entries, m.now), msg.entry.ID)
 		m.notice = ""
-		m.setStatus(savedStatus(msg.entry, m.now), false)
+		m.setStatus(savedStatus(msg.entry, prevStart, m.now), false)
 		return m, nil
 
 	case entryDeletedMsg:
@@ -430,14 +434,11 @@ func (m *Model) clampCursor() {
 	m.entriesPanel.Clamp(panels.BuildRows(m.entries, m.now))
 }
 
-// replaceEntry patches e into m.entries and keeps them newest-first, which
-// panels.BuildRows relies on to group days: an edit can move an entry's
-// start anywhere, even to another day.
-// savedStatus is the status after an edit. An entry moved before the
-// fetch window stays listed for now but won't come back on refresh, so say
-// so rather than let it vanish unexplained.
-func savedStatus(e toggl.TimeEntry, now time.Time) string {
-	if !e.Start.Before(toggl.RecentEntriesSince(now)) {
+// savedStatus is the status after an edit. An entry whose start was moved
+// before the fetch window stays listed for now but won't come back on
+// refresh, so say so rather than let it vanish unexplained.
+func savedStatus(e toggl.TimeEntry, prevStart, now time.Time) string {
+	if e.Start.Equal(prevStart) || !e.Start.Before(toggl.RecentEntriesSince(now)) {
 		return "entry saved"
 	}
 	days := int(toggl.RecentEntriesLookback / (24 * time.Hour))
@@ -445,6 +446,9 @@ func savedStatus(e toggl.TimeEntry, now time.Time) string {
 		e.Start.Local().Format("Mon, Jan 2"), days)
 }
 
+// replaceEntry patches e into m.entries and keeps them newest-first, which
+// panels.BuildRows relies on to group days: an edit can move an entry's
+// start anywhere, even to another day.
 func (m *Model) replaceEntry(e toggl.TimeEntry) {
 	found := false
 	for i := range m.entries {
@@ -458,6 +462,15 @@ func (m *Model) replaceEntry(e toggl.TimeEntry) {
 		m.entries = append([]toggl.TimeEntry{e}, m.entries...)
 	}
 	sort.SliceStable(m.entries, func(i, j int) bool { return m.entries[i].Start.After(m.entries[j].Start) })
+}
+
+func (m Model) entryByID(id int64) (toggl.TimeEntry, bool) {
+	for _, e := range m.entries {
+		if e.ID == id {
+			return e, true
+		}
+	}
+	return toggl.TimeEntry{}, false
 }
 
 func (m Model) runningEntry() *toggl.TimeEntry {

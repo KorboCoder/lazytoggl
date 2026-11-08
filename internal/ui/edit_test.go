@@ -722,3 +722,43 @@ func TestEditSaveInsideListPlainStatus(t *testing.T) {
 		t.Fatalf("status = %q, want %q", d.m.status, "entry saved")
 	}
 }
+
+// Review fixes: steps work from the date the field shows.
+
+func TestEditTypedStartThenStepDate(t *testing.T) {
+	d := openEditID3At(t, jul(13, 0, 15), jul(13, 1, 0))
+	d.keys("tab", "enter", "2", "3", "3", "0") // Sun 12 Jul 23:30
+	d.keys("tab", "ctrl+x")
+	d.dialogContains("Sat 11 Jul  23:30")
+	d.key("enter")
+	d.dialogContains("Sat 11 Jul 23:30")
+	d.dialogContains("Sun 12 Jul 01:00") // a date step moves the whole entry
+	d.dialogContains("01:30")
+}
+
+func TestEditHourStepsPastResolvedLimitKeepDate(t *testing.T) {
+	d := openEditID3At(t, jul(12, 23, 30), jul(12, 23, 50))
+	d.keys("tab", "tab", "enter", "0", "0", "1", "5", "^") // Mon 13 Jul 00:15
+	for i := 0; i < 12; i++ {
+		d.key("ctrl+a")
+	}
+	d.dialogContains("Mon 13 Jul  12:15")
+}
+
+func TestEditMinuteStepOnLongStopKeepsDate(t *testing.T) {
+	d := openEditID3At(t, jul(12, 20, 0), jul(13, 21, 0))
+	d.keys("tab", "tab", "enter", "w", "ctrl+a")
+	d.dialogContains("Mon 13 Jul  21:01")
+}
+
+// An entry the window has slid past, but whose start wasn't edited, wasn't
+// "moved": the status stays plain.
+func TestEditSaveUnmovedEntryPlainStatus(t *testing.T) {
+	d := openEditID3At(t, jul(6, 12, 30), jul(6, 13, 0)) // inside the window at 12:00
+	mm, _ := d.m.Update(tickMsg(jul(14, 13, 0)))         // window now starts Jul 6 13:00
+	d.m = mm.(Model)
+	d.keys("ctrl+u", "Renamed", "esc", "y")
+	if d.m.status != "entry saved" {
+		t.Fatalf("status = %q, want %q", d.m.status, "entry saved")
+	}
+}

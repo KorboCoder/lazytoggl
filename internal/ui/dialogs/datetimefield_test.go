@@ -4,6 +4,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // Fixture clock for the date+time field: today is Tue 14 Jul 2026.
@@ -239,4 +242,73 @@ func TestDateTimeFieldResolvesOnlyEditedTimes(t *testing.T) {
 	wantValue(t, f, at(13, 9, 0))
 	f, _ = feedDT(f, "l", "w") // motions are not edits
 	wantValue(t, f, at(13, 9, 0))
+}
+
+// Review fixes: the field's stored date must always be the date it shows,
+// so date and time steps start from what the user sees.
+
+func TestDateTimeFieldDateStepStartsFromShownDate(t *testing.T) {
+	f := NewDateTimeField(at(12, 23, 50), time.Time{}, todayEnd, nextDayBeforeNoon)
+	f, _ = feedDT(f, "0", "0", "1", "5") // resolves to Mon 13 00:15
+	f, _ = feedDT(f, "tab", "ctrl+x")
+	wantValue(t, f, at(12, 0, 15))
+	f, _ = feedDT(f, "ctrl+a", "ctrl+a")
+	wantValue(t, f, at(14, 0, 15))
+}
+
+func TestDateTimeFieldStepKeepsShownDate(t *testing.T) {
+	f := NewDateTimeField(at(12, 23, 50), time.Time{}, todayEnd, nextDayBeforeNoon)
+	f, _ = feedDT(f, "1", "1", "0", "0") // resolves to Mon 13 11:00
+	f, _ = feedDT(f, "^", "ctrl+a")      // +1h must stay on Mon, not re-resolve
+	wantValue(t, f, at(13, 12, 0))
+	f, _ = feedDT(f, "^", "0") // typing again resolves again: 02:00 → next day of base
+	wantValue(t, f, at(14, 2, 0))
+}
+
+func TestDateTimeFieldOutOfRangeDigitsThenStepCarries(t *testing.T) {
+	f := NewDateTimeField(at(13, 9, 0), time.Time{}, todayEnd, nil)
+	f, _ = feedDT(f, "2", "7", "1", "0", "ctrl+a") // 27:10 is Tue 03:10
+	wantValue(t, f, at(14, 3, 11))
+}
+
+// Steps move by real minutes, so a spring-forward gap is stepped over
+// rather than looping inside the hour before it.
+func TestDateTimeFieldStepsAcrossDSTGap(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("no tz database: %v", err)
+	}
+	saved := time.Local
+	time.Local = ny
+	t.Cleanup(func() { time.Local = saved })
+	day := func(h, m int) time.Time { return time.Date(2026, 3, 8, h, m, 0, 0, time.Local) }
+	hi := day(23, 59)
+
+	f, _ := feedDT(NewDateTimeField(day(1, 58), time.Time{}, hi, nil), "w", "ctrl+a", "ctrl+a")
+	wantValue(t, f, day(3, 0))
+	g, _ := feedDT(NewDateTimeField(day(1, 30), time.Time{}, hi, nil), "ctrl+a")
+	wantValue(t, g, day(3, 30))
+}
+
+// Only the active segment carries a cursor block: the date while it is
+// active, otherwise the time digit under the cursor.
+func TestDateTimeFieldOneCursorAtATime(t *testing.T) {
+	saved := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI)
+	t.Cleanup(func() { lipgloss.SetColorProfile(saved) })
+	blocks := func(v string) int {
+		return strings.Count(v, "\x1b[1;7m") + strings.Count(v, "\x1b[7;1m") + strings.Count(v, "\x1b[7m")
+	}
+
+	f := NewDateTimeField(at(13, 14, 32), time.Time{}, todayEnd, nil)
+	if n := blocks(f.View()); n != 1 {
+		t.Fatalf("time segment: %d cursor blocks in %q, want 1", n, f.View())
+	}
+	f, _ = feedDT(f, "tab")
+	if n := blocks(f.View()); n != 1 {
+		t.Fatalf("date segment: %d cursor blocks in %q, want 1", n, f.View())
+	}
+	if !strings.Contains(f.View(), "14:32") {
+		t.Fatalf("view = %q, want the time shown plainly while the date is active", f.View())
+	}
 }
