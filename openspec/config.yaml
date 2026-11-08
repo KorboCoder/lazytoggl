@@ -1,32 +1,35 @@
 schema: spec-driven
 
-# Project context (optional)
-# Add only constraints that should guide OpenSpec artifacts and workflows.
-# Include constraints an agent cannot infer by reading the code.
-# Keep general project documentation and discoverable codebase facts out.
-# Example:
-#   context: |
-#     Designs and tasks must cover Windows, macOS, and Linux
-#     Write all artifacts in Spanish
+context: |
+  Hard constraints (full rationale in docs/ARCHITECTURE.md):
+  - Toggl API budget: the user is on the Free plan, 30 requests/hour. Zero polling.
+    Each mutation costs exactly 1 request and patches local state from the response,
+    with no refetch afterwards. HTTP 402 (rate limited) is never retried.
+  - The UI depends only on the toggl.Service interface. Every Service method has a
+    mock.go implementation so `go run . -mock` keeps working.
+  - Service calls run as async tea.Cmds; the UI never blocks on the network.
+  - The API token lives only in the OS keychain or $TOGGL_API_TOKEN, never on disk.
+  - Keybindings are specified in docs/REQUIREMENTS.md; new keys fit that keymap.
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always state what is out of scope
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+rules:
+  proposal:
+    - List every new or changed keybinding
+  design:
+    - For any change that touches the Toggl API, state its request cost at startup,
+      per user action, and per refresh
+  tasks:
+    - Each implementation task names the test that proves it (driver_test.go or
+      teatest for UI flows, httptest fixtures for the API client)
+    - When the change alters behavior described in docs/, include a task to update
+      those docs
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+operations:
+  apply:
+    guidance:
+      - Work each task test-first with superpowers:test-driven-development
+      - Run `go test -race ./...` before checking off a task
+      - Verify UI behavior with `go run . -mock`; run against the live API only when
+        the user asks
+  archive:
+    guidance:
+      - Confirm `go test -race ./...` passes before archiving
