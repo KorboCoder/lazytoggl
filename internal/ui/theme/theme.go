@@ -27,6 +27,8 @@ var (
 	PausedStyle  = lipgloss.NewStyle().Foreground(Amber).Bold(true)
 	CursorStyle  = lipgloss.NewStyle().Foreground(Accent).Bold(true)
 	ErrStyle     = lipgloss.NewStyle().Foreground(Red)
+	// FieldCursorStyle is the block cursor on the digit a TimeField edits.
+	FieldCursorStyle = lipgloss.NewStyle().Reverse(true).Bold(true)
 )
 
 // PanelInnerWidth is the content width available inside a Panel of the given

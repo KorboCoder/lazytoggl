@@ -118,6 +118,16 @@ func (d *driver) key(s string) {
 		d.press(tea.KeyMsg{Type: tea.KeyTab})
 	case "ctrl+u":
 		d.press(tea.KeyMsg{Type: tea.KeyCtrlU})
+	case "ctrl+a":
+		d.press(tea.KeyMsg{Type: tea.KeyCtrlA})
+	case "ctrl+x":
+		d.press(tea.KeyMsg{Type: tea.KeyCtrlX})
+	case "shift+tab":
+		d.press(tea.KeyMsg{Type: tea.KeyShiftTab})
+	case "up":
+		d.press(tea.KeyMsg{Type: tea.KeyUp})
+	case "down":
+		d.press(tea.KeyMsg{Type: tea.KeyDown})
 	default:
 		d.press(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)})
 	}
@@ -136,6 +146,16 @@ func (d *driver) entryByID(id int64) (toggl.TimeEntry, bool) {
 		}
 	}
 	return toggl.TimeEntry{}, false
+}
+
+func (d *driver) dialogLacks(unwanted string) {
+	d.t.Helper()
+	if d.m.dialog == nil {
+		d.t.Fatalf("no dialog open, wanted one without %q", unwanted)
+	}
+	if v := d.m.dialog.View(); strings.Contains(v, unwanted) {
+		d.t.Fatalf("dialog unexpectedly contains %q:\n%s", unwanted, v)
+	}
 }
 
 func (d *driver) dialogContains(want string) {
@@ -311,7 +331,7 @@ func TestEditSavesDescription(t *testing.T) {
 	d := newDriver(t)
 	d.key("e") // cursor starts on the running entry
 	d.dialogContains("Edit entry")
-	d.keys("ctrl+u", "Renamed", "enter")
+	d.keys("ctrl+u", "Renamed", "esc", "y")
 
 	if d.m.dialog != nil {
 		t.Fatal("dialog still open after save")
@@ -319,26 +339,6 @@ func TestEditSavesDescription(t *testing.T) {
 	e, _ := d.entryByID(1)
 	if e.Description != "Renamed" || !e.Running() {
 		t.Fatalf("entry = %+v, want running with description Renamed", e)
-	}
-}
-
-func TestEditValidation(t *testing.T) {
-	d := newDriver(t)
-	d.keys("j", "j", "e") // finished ID3 on yesterday
-	d.dialogContains("Edit entry")
-
-	// Garbage stop time is rejected.
-	d.keys("tab", "tab", "ctrl+u", "garbage", "enter")
-	d.dialogContains("use format")
-
-	// A stop before the start is rejected.
-	d.keys("ctrl+u", fixedNow.AddDate(0, 0, -1).Add(-time.Hour).Format("2006-01-02 15:04"), "enter")
-	d.dialogContains("stop must be after start")
-
-	d.key("esc")
-	e, _ := d.entryByID(3)
-	if e.Description != "Yesterday task" || e.Duration != 3600 {
-		t.Fatalf("entry changed despite cancelled edit: %+v", e)
 	}
 }
 

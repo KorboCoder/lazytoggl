@@ -293,7 +293,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Edit):
 		if e := m.actionTarget(rows); e != nil {
-			m.dialog = dialogs.NewEdit(*e)
+			m.dialog = dialogs.NewEdit(*e, m.now)
 			return m, textinput.Blink
 		}
 		return m, nil
