@@ -178,8 +178,11 @@ cost 0.
   bound applies to what the user sets in a field; a stop pushed along by a whole-entry
   move is allowed. Rare, and visible in the review.
 - [The mock now filters by window using the wall clock] → Driver tests feed fixtures
-  through `dataLoadedMsg` and don't depend on it. `TestRefreshReloadsFromService` uses
-  the mock's seed, which is within 2 days.
+  through `dataLoadedMsg` and don't depend on it. The mock's seed must lie inside the
+  window at any time of day: today's entries were seeded at fixed clock times (09:30,
+  10:00), which start in the future before 10:00 and were filtered out, failing
+  `TestRefreshReloadsFromService` in the morning. They are now seeded relative to now,
+  and `TestMockSeedIsInWindowAtAnyTimeOfDay` guards it.
 
 ## Migration Plan
 

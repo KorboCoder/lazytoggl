@@ -179,3 +179,19 @@ func TestInRecentWindowBounds(t *testing.T) {
 		}
 	}
 }
+
+// The seed must sit inside the window at any time of day: a "today" entry
+// seeded at a fixed clock time starts in the future in the early morning,
+// and the window filter (like the real API) leaves it out.
+func TestMockSeedIsInWindowAtAnyTimeOfDay(t *testing.T) {
+	m := NewMock()
+	now := time.Now()
+	for _, e := range m.entries {
+		if !e.Running() && !InRecentWindow(e.Start, now) {
+			t.Errorf("seed entry %d %q starts %s, outside the window at %s", e.ID, e.Description, e.Start, now)
+		}
+		if !e.Running() && e.Stop.After(now) {
+			t.Errorf("seed entry %d %q stops %s, after now", e.ID, e.Description, e.Stop)
+		}
+	}
+}
