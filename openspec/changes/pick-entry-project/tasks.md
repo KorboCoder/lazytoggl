@@ -24,7 +24,7 @@ add `Old Client` (103, inactive) to the loaded projects.
 
 ## 4. Row picker and inline `@`
 
-- [ ] 4.1 Create `ProjectPicker` (its own search input plus a `ProjectList`): typing filters, `up`/`down`/`ctrl+p`/`ctrl+n` move, `enter`/`tab` pick, and `esc` cancels. Verify with `TestProjectPickerPicks`, `TestProjectPickerEscCancels`, `TestProjectPickerTabPicks`
+- [x] 4.1 Create `ProjectPicker` (its own search input plus a `ProjectList`): typing filters, `up`/`down`/`ctrl+p`/`ctrl+n` move, `enter`/`tab` pick, and `esc` cancels. Verify with `TestProjectPickerPicks`, `TestProjectPickerEscCancels`, `TestProjectPickerTabPicks`
 - [ ] 4.2 Create `atSuggest` around a `textinput`: it opens only on a single `@` rune at a word start, the query is the text from `@` to the cursor, and it closes when the `@` is deleted or the cursor moves before it. Verify with `TestAtSuggestOpensAtWordStart`, `TestAtSuggestIgnoresAtInsideWord`, `TestAtSuggestIgnoresPastedAt`, `TestAtSuggestQueryFollowsTyping`, `TestAtSuggestClosesOnBackspaceOverAt`, `TestAtSuggestClosesWhenCursorLeaves`
 - [ ] 4.3 `atSuggest` keys while open: `enter`/`tab` pick and splice (remove `@query`, collapse spaces, trim), `esc` closes and keeps the text, and the selection keys are consumed. Verify with `TestAtSuggestPickSplicesText`, `TestAtSuggestPickAtStartOfText`, `TestAtSuggestEscKeepsText`, `TestAtSuggestConsumesEnterAndEsc`
 
