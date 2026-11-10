@@ -197,8 +197,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.loading = false
 		text := msg.err.Error()
-		if errors.Is(msg.err, toggl.ErrRateLimited) {
+		var create createProjectError
+		switch {
+		case errors.Is(msg.err, toggl.ErrRateLimited):
 			text = "Rate limited by Toggl — the Free plan allows 30 requests/hour. Wait a bit before retrying."
+		case errors.Is(msg.err, toggl.ErrForbidden) && errors.As(msg.err, &create):
+			text = "Toggl refused to create the project — this workspace may only let admins create projects. Nothing was saved."
+		case errors.Is(msg.err, toggl.ErrForbidden):
+			text = "Toggl refused the request — you may not have permission."
 		}
 		m.notice = text
 		m.noticeExpiry = m.now.Add(noticeTTL)
@@ -572,6 +578,19 @@ func (m Model) loadCmd(withProjects bool) tea.Cmd {
 	}
 }
 
+// createProjectError marks a failure to create a project, so the notice can
+// say what was refused and that the entry wasn't saved either.
+type createProjectError struct {
+	name string
+	err  error
+}
+
+func (e createProjectError) Error() string {
+	return fmt.Sprintf("creating project %q: %v", e.name, e.err)
+}
+
+func (e createProjectError) Unwrap() error { return e.err }
+
 // createProjectCmd creates a project for an entry being saved (1 request);
 // next then saves the entry with it.
 func (m Model) createProjectCmd(name string, next func(int64) tea.Cmd) tea.Cmd {
@@ -579,7 +598,7 @@ func (m Model) createProjectCmd(name string, next func(int64) tea.Cmd) tea.Cmd {
 	return func() tea.Msg {
 		p, err := svc.CreateProject(context.Background(), name)
 		if err != nil {
-			return errMsg{err}
+			return errMsg{createProjectError{name: name, err: err}}
 		}
 		return projectCreatedMsg{project: p, next: next}
 	}

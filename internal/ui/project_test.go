@@ -4,7 +4,13 @@ package ui
 // Fixtures: projects ACME (101) and Internal (102); ID1 (running) is on
 // ACME, ID2 has no project, ID3 (yesterday) is on Internal.
 
-import "testing"
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/KorboCoder/lazytoggl/internal/toggl"
+)
 
 func TestStartDialogShowsResumedProject(t *testing.T) {
 	d := newDriver(t)
@@ -218,4 +224,48 @@ func TestEditDiscardWithNewProjectSendsNothing(t *testing.T) {
 	if n := d.mock.Calls("CreateProject") + d.mock.Calls("Update"); n != 0 {
 		t.Fatalf("%d requests sent, want 0", n)
 	}
+}
+
+// forbiddingService is the mock, except that creating a project is refused
+// the way a workspace that lets only admins create projects refuses it.
+type forbiddingService struct{ *toggl.Mock }
+
+func (forbiddingService) CreateProject(ctx context.Context, name string) (toggl.Project, error) {
+	return toggl.Project{}, toggl.ErrForbidden
+}
+
+func TestCreateProjectForbiddenShowsPermissionError(t *testing.T) {
+	mock := toggl.NewMock()
+	d := newDriverWith(t, forbiddingService{mock}, mock)
+	d.keys("c", "x", " ", "@", "newclient", "enter", "enter")
+	if !strings.Contains(d.m.notice, "admins") || !strings.Contains(d.m.notice, "refused") {
+		t.Fatalf("notice = %q, want a refused/admins permission message", d.m.notice)
+	}
+	if strings.Contains(strings.ToLower(d.m.notice+d.m.status), "token") {
+		t.Fatalf("notice %q / status %q mention the token", d.m.notice, d.m.status)
+	}
+	if s := mock.Calls("Start"); s != 0 {
+		t.Fatalf("Start called %d times after a failed create, want 0", s)
+	}
+}
+
+// failingStartService creates projects normally but every start fails.
+type failingStartService struct{ *toggl.Mock }
+
+func (f failingStartService) Start(ctx context.Context, req toggl.StartRequest) (toggl.TimeEntry, error) {
+	return toggl.TimeEntry{}, toggl.ErrRateLimited
+}
+
+// The project made before a failed save is in the list from then on, so
+// the retry picks it by name and nothing is created twice.
+func TestCreatedProjectReusedAfterFailedSave(t *testing.T) {
+	mock := toggl.NewMock()
+	d := newDriverWith(t, failingStartService{mock}, mock)
+	d.keys("c", "x", " ", "@", "newclient", "enter", "enter")
+	if mock.Calls("CreateProject") != 1 || d.m.runningEntry() == nil && d.m.notice == "" {
+		t.Fatalf("CreateProject %d, notice %q: want one create and a failed start", mock.Calls("CreateProject"), d.m.notice)
+	}
+	d.keys("c", "@", "newclient")
+	d.dialogContains("newclient")
+	d.dialogLacks("+ Create")
 }

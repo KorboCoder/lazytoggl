@@ -54,7 +54,14 @@ type driver struct {
 func newDriver(t *testing.T) *driver {
 	t.Helper()
 	mock := toggl.NewMock()
-	d := &driver{t: t, m: New(mock), mock: mock}
+	return newDriverWith(t, mock, mock)
+}
+
+// newDriverWith drives the app over svc; mock is the Mock inside it, for
+// call counts.
+func newDriverWith(t *testing.T, svc toggl.Service, mock *toggl.Mock) *driver {
+	t.Helper()
+	d := &driver{t: t, m: New(svc), mock: mock}
 	mm, _ := d.m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	d.m = mm.(Model)
 	mm, _ = d.m.Update(tickMsg(fixedNow)) // discard the re-arm tick cmd
