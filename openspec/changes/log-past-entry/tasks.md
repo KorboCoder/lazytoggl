@@ -29,9 +29,9 @@ on ACME since 11:50, ID2 is a finished "Standup" with no project today, and ID3 
 
 ## 5. Docs and integration
 
-- [ ] 5.1 Update `docs/REQUIREMENTS.md`: a feature-list item for logging past entries, the `m` key in the keymap, and a "Log entry" keymap section (`enter` logs, `esc` with the discard prompt). Add a `docs/PLAN.md` decisions row citing this change, which records Toggl's manual-mode defaults and `o`/`O` as the follow-up. Verify by reading each key against `proposal.md`'s keybinding table
-- [ ] 5.2 Run `go test -race ./...` and verify it passes
-- [ ] 5.3 Run `go run . -mock` and verify by hand: `m` shows the last 30 minutes; typing `standup @int` and pressing `enter` twice logs it on Internal while the running timer keeps ticking; `esc` after typing asks before discarding; an untouched `m` then `esc` closes at once
+- [x] 5.1 Update `docs/REQUIREMENTS.md`: a feature-list item for logging past entries, the `m` key in the keymap, and a "Log entry" keymap section (`enter` logs, `esc` with the discard prompt). Add a `docs/PLAN.md` decisions row citing this change, which records Toggl's manual-mode defaults and `o`/`O` as the follow-up. Verify by reading each key against `proposal.md`'s keybinding table
+- [x] 5.2 Run `go test -race ./...` and verify it passes
+- [x] 5.3 Run `go run . -mock` and verify by hand: `m` shows the last 30 minutes; typing `standup @int` and pressing `enter` twice logs it on Internal while the running timer keeps ticking; `esc` after typing asks before discarding; an untouched `m` then `esc` closes at once
 
 ## Workflow follow-up
 

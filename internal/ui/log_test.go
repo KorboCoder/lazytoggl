@@ -225,7 +225,7 @@ func TestLogOutsideWindowShowsStatus(t *testing.T) {
 func TestLogAfterNowShowsStatus(t *testing.T) {
 	d := newDriver(t)
 	d.keys("m", "later")
-	d.keys("tab", "tab", "enter", "1", "5", "0", "0", "enter")           // stop 15:00
+	d.keys("tab", "tab", "enter", "1", "5", "0", "0", "enter")             // stop 15:00
 	d.keys("shift+tab", "enter", "1", "3", "0", "0", "enter", "shift+tab") // start 13:00
 	d.key("enter")
 	if !strings.Contains(d.m.status, "entry logged — starts after now") {
