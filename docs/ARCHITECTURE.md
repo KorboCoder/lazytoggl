@@ -35,6 +35,8 @@ The single most important design decision: the UI depends only on this interface
 type Service interface {
     Me(ctx context.Context) (Me, error)
     RecentEntries(ctx context.Context) ([]TimeEntry, error) // includes the running entry
+    Projects(ctx context.Context) ([]Project, error)         // archived included, Active marks them
+    CreateProject(ctx context.Context, name string) (Project, error)
     Start(ctx context.Context, req StartRequest) (TimeEntry, error)
     Stop(ctx context.Context, entryID int64) (TimeEntry, error)
     Update(ctx context.Context, entry TimeEntry) (TimeEntry, error)
@@ -76,10 +78,11 @@ docs and community API reference during Phase 2 implementation (`internal/toggl/
 |---|---|
 | Validate token, default workspace | `GET /me` → `default_workspace_id` (falls back to legacy `default_wid` if absent) |
 | Recent entries | `GET /me/time_entries?start_date=...&end_date=...` (the window is `[toggl.RecentEntriesSince(now), now]`, i.e. the last 192h set by the exported `toggl.RecentEntriesLookback`; `toggl.InRecentWindow(start, now)` tests membership. The mock filters its entries with it, plus the running entry, so `-mock` behaves like the API on refresh, and the UI uses it to warn when an edit moves an entry's start out of the window, including past now. That the API leaves out entries starting after `end_date` is assumed from the parameter, not confirmed live). Confirmed live: the API 400s ("start_date and end_date are both required") if either is sent without the other |
-| Projects (for name/color lookup) | `GET /workspaces/{workspace_id}/projects` — **not** filtered by `active`; a past entry can reference an archived project, and filtering it out would break its display |
+| Projects (for name/color lookup and the picker) | `GET /workspaces/{workspace_id}/projects` — **not** filtered by `active`; a past entry can reference an archived project, and filtering it out would break its display. The picker hides projects whose `active` is false. Paged at 151: the client asks for `?page=2…` only while a page comes back full |
+| Create project | `POST /workspaces/{workspace_id}/projects` with `{"name", "active": true}`; only when an entry is saved with a `(new)` project, right before the entry's own request. A taken name is a `400` |
 | Start | `POST /workspaces/{workspace_id}/time_entries` with `description`, `start` (RFC3339), `duration: -1`, `created_with: "lazytoggl"`, optional `project_id` |
 | Stop | `PATCH /workspaces/{workspace_id}/time_entries/{id}/stop` (no body) |
-| Edit | `PUT /workspaces/{workspace_id}/time_entries/{id}`; `stop`/`duration` only sent when the entry is finished, omitted while running |
+| Edit | `PUT /workspaces/{workspace_id}/time_entries/{id}`; `stop`/`duration` only sent when the entry is finished, omitted while running; `project_id` always sent, `null` for no project (leaving it out would keep the old project) |
 | Delete | `DELETE /workspaces/{workspace_id}/time_entries/{id}` |
 
 A running entry is identified by a null/absent `"stop"` field. Toggl's own docs
@@ -133,13 +136,17 @@ Design consequences (these are architectural constraints, not optimizations):
 1. **Zero polling.** One `GET /me/time_entries` at startup populates the list *and* the
    running entry — no separate `/current` call. Elapsed time ticks locally.
 2. **Optimistic local state.** Start/stop/edit/delete each cost exactly 1 request; the
-   response updates local state; never refetch after a mutation.
+   response updates local state; never refetch after a mutation. Starting or saving
+   with a new project costs 2: the project is created first and added to the
+   session's project map from the response, then the entry is saved with its ID.
+   Browsing, filtering, or picking projects costs nothing.
 3. `workspace_id` (from onboarding's `GET /me`) is cached in the config file so later
    launches skip `/me` entirely.
 4. **Projects are fetched once per session** (at startup). A manual refresh (`r`)
    refetches entries only and reuses the session's project map — so startup costs 2
    requests and each refresh costs 1. (New projects created mid-session on the web app
-   appear after a restart.)
+   appear after a restart. Workspaces with more than 151 projects pay one request per
+   extra page at startup.)
 5. On HTTP 402: never retried automatically (retrying an exhausted hourly quota just
    burns more of it), surfaced prominently via the error notice (below).
 
@@ -147,6 +154,11 @@ Design consequences (these are architectural constraints, not optimizations):
 retry with exponential backoff (500ms → 1s → 2s), hard-capped at 3 total attempts so
 retries can never run indefinitely. Deterministic failures (400s, 402 rate limits,
 401/403 auth) never retry. A retried POST resends the identical body.
+
+**Auth errors:** 401 is `ErrInvalidToken`; 403 is `ErrForbidden`. Toggl answers a wrong
+Basic login with 403 and also uses 403 for an action the user may not take (e.g. a
+workspace where only admins may create projects). Onboarding treats both as "token
+rejected"; the main app reports a 403 as a refused request, not a bad token.
 
 **Error notice UI** (`app.go`): any failed API call raises a floating red-bordered
 popup in the top-right corner (composited over the panels via `theme.Overlay`,

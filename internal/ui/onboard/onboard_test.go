@@ -163,3 +163,17 @@ func TestNetworkErrorShowsRawMessage(t *testing.T) {
 		t.Fatalf("view does not surface the underlying error:\n%s", m.View())
 	}
 }
+
+// During onboarding a 403 still means the token was rejected: Toggl answers
+// a wrong Basic login with 403.
+func TestForbiddenTokenShowsRejected(t *testing.T) {
+	validate := func(ctx context.Context, token string) (toggl.Me, error) {
+		return toggl.Me{}, toggl.ErrForbidden
+	}
+	m := New(validate)
+	m = typeText(t, m, "bad")
+	m = press(t, m, tea.KeyMsg{Type: tea.KeyEnter})
+	if m.Done || !strings.Contains(m.View(), "rejected") {
+		t.Fatalf("view does not show the rejected-token message:\n%s", m.View())
+	}
+}

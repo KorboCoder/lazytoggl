@@ -214,3 +214,27 @@ func TestMockSeedsAnArchivedProject(t *testing.T) {
 		t.Fatalf("active %d archived %d, want 2 and 1", active, archived)
 	}
 }
+
+func TestMockCreateProject(t *testing.T) {
+	m := NewMock()
+	ctx := context.Background()
+	p, err := m.CreateProject(ctx, "newclient")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if p.ID == 0 || p.Name != "newclient" || !p.Active {
+		t.Fatalf("project = %+v, want an active newclient with an ID", p)
+	}
+	projects, _ := m.Projects(ctx)
+	found := false
+	for _, q := range projects {
+		found = found || q.ID == p.ID
+	}
+	if !found {
+		t.Fatal("created project missing from Projects")
+	}
+	// Like the API, a duplicate name is refused.
+	if _, err := m.CreateProject(ctx, "newclient"); err == nil {
+		t.Fatal("duplicate name accepted")
+	}
+}

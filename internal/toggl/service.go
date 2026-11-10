@@ -37,6 +37,9 @@ type Service interface {
 	// is included (zero Stop, negative Duration).
 	RecentEntries(ctx context.Context) ([]TimeEntry, error)
 	Projects(ctx context.Context) ([]Project, error)
+	// CreateProject creates an active project in the workspace. A name that
+	// is already taken is refused.
+	CreateProject(ctx context.Context, name string) (Project, error)
 	// Start begins a new entry. Toggl stops any running entry automatically.
 	Start(ctx context.Context, req StartRequest) (TimeEntry, error)
 	Stop(ctx context.Context, entryID int64) (TimeEntry, error)

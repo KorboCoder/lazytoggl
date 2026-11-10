@@ -11,11 +11,11 @@ add `Old Client` (103, inactive) to the loaded projects.
 ## 2. `internal/toggl`
 
 - [x] 2.1 Add `Project.Active`, decoded from `active`; extend `TestProjectsDoesNotFilterInactive` (`client_test.go`) to assert both values. Add the archived `Old Client` to the mock seed and check it in `mock_test.go`
-- [ ] 2.2 Add `Service.CreateProject(ctx, name)`. Client: `POST /workspaces/{wid}/projects`, pinned by `TestCreateProjectSendsNameAndActive` (`client_test.go`: method, path, body, decoded response). Mock: append with the next ID, pinned by `TestMockCreateProject`
-- [ ] 2.3 Make `Update` always send `project_id`, as `null` when 0 (or the form task 1.1 found). Verify with `TestUpdateClearsProjectWithNull` and extend `TestUpdateSendsStopOnlyWhenFinished` to assert `project_id` is present. `Start` still leaves it out: extend `TestStartSendsExpectedBody`
-- [ ] 2.4 Add `ErrForbidden` for 403 (401 stays `ErrInvalidToken`). Verify with `TestForbidden403ReturnsErrForbidden` and update `TestInvalidTokenReturnsErrInvalidToken` to cover 401 only. Make `onboard.friendlyError` use `errors.Is` and treat both as a rejected token, verified with a new case in the onboarding tests
-- [ ] 2.6 Follow project pages: `Client.Projects` requests `?page=N` while a page holds 151 projects (the page size task 1.1 found), and stops at the first short page. Verify with `TestProjectsFollowsFullPages` (two pages, 151 + 2: two requests, 153 projects) and `TestProjectsStopsAfterShortPage` (one request) in `client_test.go`
-- [ ] 2.5 Update `docs/ARCHITECTURE.md`: the `Service` interface listing, the endpoint table (create project, clearing a project), the 403 note, and request costs (a new project adds 1). Verify by reading it against design.md
+- [x] 2.2 Add `Service.CreateProject(ctx, name)`. Client: `POST /workspaces/{wid}/projects`, pinned by `TestCreateProjectSendsNameAndActive` (`client_test.go`: method, path, body, decoded response). Mock: append with the next ID, pinned by `TestMockCreateProject`
+- [x] 2.3 Make `Update` always send `project_id`, as `null` when 0 (or the form task 1.1 found). Verify with `TestUpdateClearsProjectWithNull` and extend `TestUpdateSendsStopOnlyWhenFinished` to assert `project_id` is present. `Start` still leaves it out: extend `TestStartSendsExpectedBody`
+- [x] 2.4 Add `ErrForbidden` for 403 (401 stays `ErrInvalidToken`). Verify with `TestForbidden403ReturnsErrForbidden` and update `TestInvalidTokenReturnsErrInvalidToken` to cover 401 only. Make `onboard.friendlyError` use `errors.Is` and treat both as a rejected token, verified with a new case in the onboarding tests
+- [x] 2.6 Follow project pages: `Client.Projects` requests `?page=N` while a page holds 151 projects (the page size task 1.1 found), and stops at the first short page. Verify with `TestProjectsFollowsFullPages` (two pages, 151 + 2: two requests, 153 projects) and `TestProjectsStopsAfterShortPage` (one request) in `client_test.go`
+- [x] 2.5 Update `docs/ARCHITECTURE.md`: the `Service` interface listing, the endpoint table (create project, clearing a project), the 403 note, and request costs (a new project adds 1). Verify by reading it against design.md
 
 ## 3. `ProjectList`
 

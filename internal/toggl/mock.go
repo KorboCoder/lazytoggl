@@ -3,7 +3,9 @@ package toggl
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -107,6 +109,22 @@ func (m *Mock) Projects(ctx context.Context) ([]Project, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]Project(nil), m.projects...), nil
+}
+
+func (m *Mock) CreateProject(ctx context.Context, name string) (Project, error) {
+	m.countCall("CreateProject")
+	time.Sleep(mockLatency)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, p := range m.projects {
+		if strings.EqualFold(p.Name, name) {
+			return Project{}, fmt.Errorf("toggl: request failed (400): a project with the name '%s' already exists", name)
+		}
+	}
+	m.nextID++
+	p := Project{ID: m.nextID, Name: name, Color: "#0b83d9", Active: true}
+	m.projects = append(m.projects, p)
+	return p, nil
 }
 
 func (m *Mock) Start(ctx context.Context, req StartRequest) (TimeEntry, error) {
