@@ -2,6 +2,7 @@ package toggl
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -236,5 +237,16 @@ func TestMockCreateProject(t *testing.T) {
 	// Like the API, a duplicate name is refused.
 	if _, err := m.CreateProject(ctx, "newclient"); err == nil {
 		t.Fatal("duplicate name accepted")
+	}
+}
+
+// The mock refuses a duplicate with the client's error type, so -mock shows
+// the same notice as the live API.
+func TestMockDuplicateProjectIsAPIError(t *testing.T) {
+	m := NewMock()
+	_, err := m.CreateProject(context.Background(), "ACME")
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != 400 {
+		t.Fatalf("err = %v, want an *APIError with status 400", err)
 	}
 }

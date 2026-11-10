@@ -118,7 +118,8 @@ func (m *Mock) CreateProject(ctx context.Context, name string) (Project, error) 
 	defer m.mu.Unlock()
 	for _, p := range m.projects {
 		if strings.EqualFold(p.Name, name) {
-			return Project{}, fmt.Errorf("toggl: request failed (400): a project with the name '%s' already exists", name)
+			// The same error the client returns for the live API's 400.
+			return Project{}, &APIError{StatusCode: 400, Body: fmt.Sprintf("\"a project with the name '%s' already exists\"", name)}
 		}
 	}
 	m.nextID++

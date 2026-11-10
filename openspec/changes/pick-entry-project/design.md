@@ -191,12 +191,24 @@ missing archived name fails cleanly with the `400` above.
 
 | | Requests |
 |---|---|
-| Startup | 2, unchanged (more only if task 1 finds paging) |
-| Refresh | 1, unchanged |
+| Startup | 2, unchanged (one more per extra page of 151 projects, at most 4 more) |
+| Refresh | 1, unchanged; 2 only while projects have never loaded (startup failed) |
 | Opening, filtering, or picking from the picker or dropdown | 0 |
 | Starting or saving with an existing project or none | 1, as today |
 | Starting or saving with a new project | 2 (create, then the entry) |
 | Cancelling the start dialog, or discarding the edit | 0 |
+
+### 9. Review follow-ups
+
+- **Paging is bounded.** `?page=N` itself wasn't confirmed live, so `Projects` stops
+  as soon as a page brings no new project IDs, and after 5 pages in any case.
+- **Projects that never loaded.** `Model.projectsLoaded` is set once `Projects`
+  succeeds. Until then a refresh fetches projects as well, and `projectList()`
+  returns nil, which `ProjectList` shows as "projects not loaded — press r" with no
+  create option. Loaded projects are merged into `m.projects`, never replacing it,
+  so a project created before a late load survives.
+- **403 stays as specified**: the user chose to keep every 403 after onboarding a
+  permission message, even though the live check showed a wrong login is a 403.
 
 ## Risks / Trade-offs
 

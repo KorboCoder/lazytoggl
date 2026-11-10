@@ -135,13 +135,18 @@ func (w projectWire) toProject() Project {
 // confirmed live): a full page means there may be another.
 const projectsPageSize = 151
 
+// maxProjectPages caps the requests one Projects call can make, since every
+// page counts against the hourly quota (755 projects).
+const maxProjectPages = 5
+
 func (c *Client) Projects(ctx context.Context) ([]Project, error) {
 	base := fmt.Sprintf("/workspaces/%d/projects", c.workspaceID)
 	// Deliberately not filtered by "active": a past entry may reference an
 	// archived project, and dropping it here would make projectLabel show
 	// "—" instead of the real name for that history.
 	var projects []Project
-	for page := 1; ; page++ {
+	seen := map[int64]bool{}
+	for page := 1; page <= maxProjectPages; page++ {
 		path := base
 		if page > 1 {
 			path = fmt.Sprintf("%s?page=%d", base, page)
@@ -154,14 +159,21 @@ func (c *Client) Projects(ctx context.Context) ([]Project, error) {
 		if err := json.Unmarshal(raw, &wires); err != nil {
 			return nil, fmt.Errorf("toggl: decoding projects: %w", err)
 		}
+		added := 0
 		for _, w := range wires {
-			projects = append(projects, w.toProject())
+			if !seen[w.ID] {
+				seen[w.ID] = true
+				projects = append(projects, w.toProject())
+				added++
+			}
 		}
-		// Each further page costs a request, so only a full page asks.
-		if len(wires) < projectsPageSize {
-			return projects, nil
+		// Each further page costs a request, so only a full page of new
+		// projects asks. A repeated page means `page` isn't honoured.
+		if len(wires) < projectsPageSize || added == 0 {
+			break
 		}
 	}
+	return projects, nil
 }
 
 func (c *Client) CreateProject(ctx context.Context, name string) (Project, error) {

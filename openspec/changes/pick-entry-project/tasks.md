@@ -52,6 +52,12 @@ add `Old Client` (103, inactive) to the loaded projects.
 - [x] 8.2 Run `go test -race ./...` and verify it passes
 - [x] 8.3 Run `go run . -mock` and verify by hand: `c`, type `fix @int`, `enter` picks Internal, a second `enter` starts it; `@newclient` offers create, and starting adds a `newclient` project; in the edit dialog, the project row's picker changes the project and the review shows it; `Old Client` never appears in a list
 
+## 9. Review follow-ups
+
+- [x] 9.1 Bound project paging: stop when a page adds no new project IDs, and after `maxProjectPages` (5). Verified by `TestProjectsStopsWhenPagesRepeat` and `TestProjectsPagingIsCapped` (`client_test.go`); ARCHITECTURE lists `?page=` as unconfirmed
+- [x] 9.2 Projects that never loaded: refresh fetches them while `projectsLoaded` is false, the list shows "projects not loaded" without a create option, and loads merge into `m.projects`. Verified by `TestRefreshLoadsProjectsWhenNeverLoaded`, `TestUnloadedProjectsOfferNoCreate`, `TestLateLoadKeepsCreatedProject` (`project_test.go`)
+- [x] 9.3 Minor fixes: "starting…" status after a create in the start flow (`TestStartWithNewProjectStatusSaysStarting`); deterministic A–Z ties (`TestProjectListOrderIsDeterministic`); archived exact match explains itself (`TestProjectListArchivedNameExplains`); mock duplicate is an `*APIError` (`TestMockDuplicateProjectIsAPIError`); `TestCreatedProjectReusedAfterFailedSave` asserts the failed start
+
 ## Workflow follow-up
 
 - Run superpowers:requesting-code-review once all tasks are checked.
