@@ -269,3 +269,18 @@ func TestCreatedProjectReusedAfterFailedSave(t *testing.T) {
 	d.dialogContains("newclient")
 	d.dialogLacks("+ Create")
 }
+
+// An open dropdown or picker grows the dialog rather than covering its help.
+func TestProjectPopupsKeepHelpVisible(t *testing.T) {
+	d := newDriver(t)
+	d.keys("c", "@")
+	d.dialogContains("↑/↓ choose · enter pick · esc close")
+	d.keys("esc", "esc", "c", "tab", "enter") // the start dialog's row picker
+	d.dialogContains("↑/↓ choose · enter pick · esc close")
+	d.keys("esc", "esc")
+	e := openEditID3(t) // the edit dialog's dropdown and picker
+	e.keys(" ", "@")
+	e.dialogContains("↑/↓ choose · enter pick · esc close")
+	e.keys("esc", "shift+tab", "enter")
+	e.dialogContains("↑/↓ choose · enter pick · esc close")
+}

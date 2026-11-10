@@ -55,10 +55,10 @@ func projectPopup(title, content string) string {
 
 // overlayInBox draws pop over a dialog's content lines, its top border on
 // content line top, growing the dialog (blank lines before its last line,
-// the help) when the popup would run past the bottom. It returns the boxed
-// dialog with the popup over it.
+// the help) until the popup ends above the help, so the help stays readable.
+// It returns the boxed dialog with the popup over it.
 func overlayInBox(title string, lines []string, pop string, top int) string {
-	need := top + lipgloss.Height(pop)
+	need := top + lipgloss.Height(pop) + 1
 	for len(lines) < need {
 		lines = append(lines[:len(lines)-1], "", lines[len(lines)-1])
 	}
