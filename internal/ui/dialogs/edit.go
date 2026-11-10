@@ -23,6 +23,7 @@ const (
 	rowStart
 	rowStop
 	rowDuration
+	rowProject
 )
 
 var rowLabels = map[editRow]string{
@@ -30,6 +31,7 @@ var rowLabels = map[editRow]string{
 	rowStart:       "start",
 	rowStop:        "stop",
 	rowDuration:    "duration",
+	rowProject:     "project",
 }
 
 // Edit is the edit dialog: a form over a draft of the entry. The original
@@ -43,6 +45,14 @@ type Edit struct {
 	stop  time.Time
 	rows  []editRow
 	focus int
+
+	// The project: picked from the project row's picker, or by typing "@"
+	// in the description (at).
+	projects   []toggl.Project
+	project    projectChoice
+	at         atSuggest
+	pickerOpen bool
+	picker     ProjectPicker
 
 	// fieldOpen is set while a time row's field is open over the form:
 	// dt (date + HH:MM) for start and stop, field (HH:MM) for duration.
@@ -61,7 +71,7 @@ type Edit struct {
 
 const dayMinutes = 24 * 60
 
-func NewEdit(entry toggl.TimeEntry, now time.Time) *Edit {
+func NewEdit(entry toggl.TimeEntry, now time.Time, projects []toggl.Project) *Edit {
 	ti := textinput.New()
 	ti.Prompt = ""
 	ti.CharLimit = 200
@@ -75,11 +85,16 @@ func NewEdit(entry toggl.TimeEntry, now time.Time) *Edit {
 		desc:  ti,
 		start: entry.Start.Local(),
 		rows:  []editRow{rowDescription, rowStart},
+
+		projects: projects,
+		project:  projectChoice{ID: entry.ProjectID},
+		at:       newAtSuggest(projects),
 	}
 	if !entry.Running() {
 		d.stop = entry.Stop.Local()
 		d.rows = append(d.rows, rowStop, rowDuration)
 	}
+	d.rows = append(d.rows, rowProject)
 	return d
 }
 
@@ -97,6 +112,24 @@ func (d *Edit) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 		}
 		return d, nil
 	}
+	if d.pickerOpen {
+		if isKey {
+			var res PickResult
+			d.picker, res = d.picker.Update(k)
+			if res == PickPicked {
+				d.project = chose(d.picker.Picked())
+			}
+			if res != PickEditing {
+				d.pickerOpen = false
+			}
+		}
+		return d, nil
+	}
+	// While the @ dropdown is open it owns every key, so enter picks and
+	// esc closes only the dropdown.
+	if isKey && d.rows[d.focus] == rowDescription && d.at.Open() {
+		return d, d.updateAt(k)
+	}
 	if isKey {
 		switch k.String() {
 		case "esc":
@@ -110,8 +143,13 @@ func (d *Edit) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 		case "shift+tab", "up":
 			return d, d.setFocus(d.focus - 1)
 		case "enter":
-			if d.rows[d.focus] == rowDescription {
+			switch d.rows[d.focus] {
+			case rowDescription:
 				return d, d.setFocus(d.focus + 1)
+			case rowProject:
+				d.picker = NewProjectPicker(d.projects, d.project.set())
+				d.pickerOpen = true
+				return d, nil
 			}
 			d.openField()
 			return d, nil
@@ -120,9 +158,21 @@ func (d *Edit) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 	if d.rows[d.focus] != rowDescription {
 		return d, nil
 	}
+	if isKey {
+		return d, d.updateAt(k)
+	}
 	var cmd tea.Cmd
 	d.desc, cmd = d.desc.Update(msg)
 	return d, cmd
+}
+
+// updateAt sends a description key through the @ suggester.
+func (d *Edit) updateAt(k tea.KeyMsg) tea.Cmd {
+	res, cmd := d.at.Update(&d.desc, k, d.project.set())
+	if res == PickPicked {
+		d.project = chose(d.at.Picked())
+	}
+	return cmd
 }
 
 func (d *Edit) setFocus(i int) tea.Cmd {
@@ -331,16 +381,20 @@ func (d *Edit) changes() []change {
 		before, after := whenPair(o.Start.Local(), d.start)
 		out = append(out, change{"start", before, after})
 	}
-	if o.Running() {
-		return out
+	if !o.Running() {
+		if !d.stop.Equal(o.Stop) {
+			before, after := whenPair(o.Stop.Local(), d.stop)
+			out = append(out, change{"stop", before, after})
+		}
+		before := int(o.Stop.Sub(o.Start) / time.Minute)
+		if after := d.durationMinutes(); after != before {
+			out = append(out, change{"duration", clock(before), clock(after)})
+		}
 	}
-	if !d.stop.Equal(o.Stop) {
-		before, after := whenPair(o.Stop.Local(), d.stop)
-		out = append(out, change{"stop", before, after})
-	}
-	before := int(o.Stop.Sub(o.Start) / time.Minute)
-	if after := d.durationMinutes(); after != before {
-		out = append(out, change{"duration", clock(before), clock(after)})
+	if d.project != (projectChoice{ID: o.ProjectID}) {
+		out = append(out, change{"project",
+			projectLabel(projectChoice{ID: o.ProjectID}, d.projects),
+			projectLabel(d.project, d.projects)})
 	}
 	return out
 }
@@ -389,6 +443,9 @@ func (d *Edit) draft() toggl.TimeEntry {
 	e := d.orig
 	e.Description = d.description()
 	e.Start = d.start
+	// A project to create has no ID yet; the app fills it in after
+	// creating it (EditSubmitMsg.NewProject).
+	e.ProjectID = d.project.ID
 	if !d.orig.Running() {
 		e.Stop = d.stop
 		e.Duration = int64(d.stop.Sub(d.start).Seconds())
@@ -398,7 +455,8 @@ func (d *Edit) draft() toggl.TimeEntry {
 
 func (d *Edit) submitCmd() tea.Cmd {
 	e := d.draft()
-	return func() tea.Msg { return EditSubmitMsg{Entry: e} }
+	newProject := d.project.NewName
+	return func() tea.Msg { return EditSubmitMsg{Entry: e, NewProject: newProject} }
 }
 
 // clock formats a time of day, or a duration, as HH:MM (minutes floored).
@@ -417,6 +475,8 @@ func (d *Edit) rowValue(r editRow) string {
 		return d.stop.Format(dateLayout) + " " + clock(minutesOfDay(d.stop))
 	case rowDuration:
 		return clock(d.durationMinutes())
+	case rowProject:
+		return projectLabel(d.project, d.projects)
 	}
 	return ""
 }
@@ -467,8 +527,21 @@ func (d *Edit) View() string {
 				theme.MutedStyle.Render("0-9 type · h l ^ $ w b move · ctrl+a/x +/-1"),
 				theme.MutedStyle.Render("enter ok · esc revert"))
 		}
+	} else if d.pickerOpen || d.at.Open() {
+		lines = append(lines, theme.MutedStyle.Render("↑/↓ choose · enter pick · esc close"))
+	} else if d.rows[d.focus] == rowProject {
+		lines = append(lines, theme.MutedStyle.Render("tab next · enter pick project · esc done"))
 	} else {
 		lines = append(lines, theme.MutedStyle.Render("tab next · enter edit time · esc done"))
+	}
+	switch {
+	case d.at.Open():
+		// Below the description input.
+		return overlayInBox("Edit entry", lines, projectPopup("project", d.at.View(pickerWidth)), 2)
+	case d.pickerOpen:
+		// The project row is last, so the picker opens upward from it.
+		pop := projectPopup("project", d.picker.View())
+		return overlayInBox("Edit entry", lines, pop, max(0, rowY(d.focus)-lipgloss.Height(pop)))
 	}
 	view := box("Edit entry", lines, boxWidth)
 	if !d.fieldOpen {

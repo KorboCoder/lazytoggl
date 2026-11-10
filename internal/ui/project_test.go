@@ -106,3 +106,116 @@ func TestStartCancelWithNewProjectSendsNothing(t *testing.T) {
 		t.Fatalf("%d requests sent, want 0", n)
 	}
 }
+
+// Edit dialog: the project row comes last, after duration (after start for
+// a running entry).
+func TestEditFormShowsProjectRow(t *testing.T) {
+	d := openEditID3(t)
+	d.dialogContains("project")
+	d.dialogContains("Internal")
+	d.keys("tab", "tab", "tab", "tab")
+	d.dialogContains("> project")
+}
+
+func TestEditRunningFormShowsProjectRow(t *testing.T) {
+	d := newDriver(t)
+	d.key("e") // the running entry, on ACME
+	d.dialogContains("ACME")
+	d.keys("tab", "tab")
+	d.dialogContains("> project")
+	d.dialogLacks("stop")
+}
+
+func TestEditEnterOnProjectRowOpensPicker(t *testing.T) {
+	d := openEditID3(t)
+	d.keys("shift+tab", "enter") // wrap back from description to project
+	d.dialogContains("search or create")
+	d.dialogContains("No project") // the entry has a project to remove
+}
+
+func TestEditAtPicksProject(t *testing.T) {
+	d := openEditID3(t) // on Internal
+	d.keys(" ", "@", "acm", "enter")
+	d.dialogContains("ACME") // the project row
+	d.dialogLacks("@acm")
+	d.dialogContains("Yesterday task") // the description, trimmed back
+}
+
+func TestEditAtEnterDoesNotMoveRow(t *testing.T) {
+	d := openEditID3(t)
+	d.keys(" ", "@", "acm", "enter")
+	d.dialogContains("> description") // enter picked; it didn't move to start
+}
+
+func TestEditAtEscDoesNotOpenReview(t *testing.T) {
+	d := openEditID3(t)
+	d.keys(" ", "@", "ac", "esc")
+	d.dialogContains("Edit entry")
+	d.dialogLacks("Save changes?")
+	d.dialogContains("@ac")
+}
+
+// openEditID2 opens the finished entry with no project ("Standup").
+func openEditID2(t *testing.T) *driver {
+	t.Helper()
+	d := newDriver(t)
+	d.keys("j", "e")
+	d.dialogContains("Standup")
+	return d
+}
+
+func TestEditReviewShowsProjectChange(t *testing.T) {
+	d := openEditID3(t)
+	d.keys(" ", "@", "acm", "enter", "esc")
+	d.dialogContains("Save changes?")
+	d.dialogContains("Internal -> ACME")
+	d.dialogLacks("description") // " @acm" was removed again: no description change
+}
+
+func TestEditReviewShowsNewProject(t *testing.T) {
+	d := openEditID2(t)
+	d.keys(" ", "@", "newclient", "enter", "esc")
+	d.dialogContains("(none) -> newclient (new)")
+}
+
+// pickNoProject opens ID3's project picker and picks "No project".
+func pickNoProject(d *driver) {
+	d.keys("shift+tab", "enter", "enter")
+}
+
+func TestEditReviewShowsProjectRemoved(t *testing.T) {
+	d := openEditID3(t)
+	pickNoProject(d)
+	d.dialogContains("(none)")
+	d.key("esc")
+	d.dialogContains("Internal -> (none)")
+}
+
+func TestEditClearProjectSaves(t *testing.T) {
+	d := openEditID3(t)
+	pickNoProject(d)
+	d.keys("esc", "y")
+	if e, _ := d.entryByID(3); e.ProjectID != 0 {
+		t.Fatalf("saved ProjectID = %d, want 0", e.ProjectID)
+	}
+}
+
+func TestEditSaveWithNewProjectCreatesThenUpdates(t *testing.T) {
+	d := openEditID2(t)
+	d.keys(" ", "@", "newclient", "enter", "esc", "y")
+	if c, u := d.mock.Calls("CreateProject"), d.mock.Calls("Update"); c != 1 || u != 1 {
+		t.Fatalf("CreateProject %d, Update %d calls; want 1 and 1", c, u)
+	}
+	e, _ := d.entryByID(2)
+	if p, ok := d.m.projects[e.ProjectID]; e.ProjectID == 0 || !ok || p.Name != "newclient" {
+		t.Fatalf("saved ProjectID = %d (%+v), want the new newclient project", e.ProjectID, p)
+	}
+}
+
+func TestEditDiscardWithNewProjectSendsNothing(t *testing.T) {
+	d := openEditID2(t)
+	d.keys(" ", "@", "newclient", "enter", "esc", "n")
+	if n := d.mock.Calls("CreateProject") + d.mock.Calls("Update"); n != 0 {
+		t.Fatalf("%d requests sent, want 0", n)
+	}
+}

@@ -46,12 +46,14 @@ func TestEditTabCyclesRowsAndWraps(t *testing.T) {
 	d.dialogContains("> start")
 	d.key("down")
 	d.dialogContains("> stop")
-	d.keys("tab", "tab") // duration, then wrap
+	d.keys("tab", "tab") // duration, then project
+	d.dialogContains("> project")
+	d.key("tab") // wrap
 	d.dialogContains("> description")
 	d.key("shift+tab") // wrap backwards
-	d.dialogContains("> duration")
+	d.dialogContains("> project")
 	d.key("up")
-	d.dialogContains("> stop")
+	d.dialogContains("> duration")
 }
 
 func TestEditEnterOnDescriptionMovesOn(t *testing.T) {
