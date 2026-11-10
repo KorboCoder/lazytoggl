@@ -7,19 +7,19 @@ on ACME since 11:50, ID2 is a finished "Standup" with no project today, and ID3 
 
 ## 1. Live API fact (needs the user's OK: about 5 requests)
 
-- [ ] 1.1 With the user's OK, and only while they have no timer of their own running, confirm design.md §5: logging a finished entry with `POST .../time_entries` (`start`, `stop`, `duration`) leaves a running entry running. Use a throwaway running entry and a throwaway finished one, and delete both. Record the result in `docs/ARCHITECTURE.md`'s confirmed-live notes. If the running entry stops, pause and revisit the spec before group 3
+- [x] 1.1 With the user's OK, and only while they have no timer of their own running, confirm design.md §5: logging a finished entry with `POST .../time_entries` (`start`, `stop`, `duration`) leaves a running entry running. Use a throwaway running entry and a throwaway finished one, and delete both. Record the result in `docs/ARCHITECTURE.md`'s confirmed-live notes. If the running entry stops, pause and revisit the spec before group 3
 
 ## 2. `Service.Log`
 
-- [ ] 2.1 Add `toggl.LogRequest` and `Service.Log`. The client sends `POST /workspaces/{wid}/time_entries` with `workspace_id`, `description`, `start`, `stop`, `duration` in seconds, `created_with`, and `project_id` only when it isn't 0. Verify with `TestLogSendsFinishedEntry` and `TestLogOmitsProjectWhenNone` (`client_test.go`: method, path, exact body keys, decoded finished entry)
-- [ ] 2.2 Mock `Log`: append a finished entry with the next ID and leave the running entry running. Verify with `TestMockLogKeepsTimerRunning` (`mock_test.go`)
-- [ ] 2.3 Update `docs/ARCHITECTURE.md`: the `Service` listing, a "Log entry" row in the endpoint table, and the request cost (1, or 2 with a new project). Verify by reading it against design.md
+- [x] 2.1 Add `toggl.LogRequest` and `Service.Log`. The client sends `POST /workspaces/{wid}/time_entries` with `workspace_id`, `description`, `start`, `stop`, `duration` in seconds, `created_with`, and `project_id` only when it isn't 0. Verify with `TestLogSendsFinishedEntry` and `TestLogOmitsProjectWhenNone` (`client_test.go`: method, path, exact body keys, decoded finished entry)
+- [x] 2.2 Mock `Log`: append a finished entry with the next ID and leave the running entry running. Verify with `TestMockLogKeepsTimerRunning` (`mock_test.go`)
+- [x] 2.3 Update `docs/ARCHITECTURE.md`: the `Service` listing, a "Log entry" row in the endpoint table, and the request cost (1, or 2 with a new project). Verify by reading it against design.md
 
 ## 3. Log mode on the edit dialog
 
-- [ ] 3.1 Add `NewLog(now, projects)`: a log-mode `Edit` titled `Log entry`, with stop = `now` truncated to the minute, start = stop − 30m, an empty description, and project `(none)`. Verify in a new `internal/ui/log_test.go`: `TestLogDialogDefaults` (11:30–12:00, `00:30`) and `TestLogDialogDefaultsAcrossMidnight` (a tick at 00:10 gives a start on the previous day at 23:40)
-- [ ] 3.2 `enter` on the description emits `LogSubmitMsg` (with `NewProject` for a `(new)` project), and other rows keep their edit behaviour. Verify with `TestLogEnterOnDescriptionLogs`, `TestLogEnterOnTimeRowOpensField`, `TestLogAtEnterPicksAndDoesNotLog`; every existing `edit_test.go` and `project_test.go` case still passes unchanged
-- [ ] 3.3 `esc`: close at once when `changes()` is empty, otherwise show the discard prompt (`y` closes, `n` or `esc` goes back, other keys are ignored); no review in log mode. Verify with `TestLogEscUnchangedCloses`, `TestLogEscAfterTypingAsksThenDiscards`, `TestLogDiscardPromptBackKeepsForm`, `TestLogDiscardPromptIgnoresOtherKeys`
+- [x] 3.1 Add `NewLog(now, projects)`: a log-mode `Edit` titled `Log entry`, with stop = `now` truncated to the minute, start = stop − 30m, an empty description, and project `(none)`. Verify in a new `internal/ui/log_test.go`: `TestLogDialogDefaults` (11:30–12:00, `00:30`) and `TestLogDialogDefaultsAcrossMidnight` (a tick at 00:10 gives a start on the previous day at 23:40)
+- [x] 3.2 `enter` on the description emits `LogSubmitMsg` (with `NewProject` for a `(new)` project), and other rows keep their edit behaviour. Verify with `TestLogEnterOnDescriptionLogs`, `TestLogEnterOnTimeRowOpensField`, `TestLogAtEnterPicksAndDoesNotLog`; every existing `edit_test.go` and `project_test.go` case still passes unchanged
+- [x] 3.3 `esc`: close at once when `changes()` is empty, otherwise show the discard prompt (`y` closes, `n` or `esc` goes back, other keys are ignored); no review in log mode. Verify with `TestLogEscUnchangedCloses`, `TestLogEscAfterTypingAsksThenDiscards`, `TestLogDiscardPromptBackKeepsForm`, `TestLogDiscardPromptIgnoresOtherKeys`
 
 ## 4. App wiring
 

@@ -22,6 +22,13 @@ func InRecentWindow(start, now time.Time) bool {
 	return !start.Before(RecentEntriesSince(now)) && !start.After(now)
 }
 
+// LogRequest describes a finished time entry to create after the fact.
+type LogRequest struct {
+	Description string
+	ProjectID   int64 // 0 means no project
+	Start, Stop time.Time
+}
+
 // StartRequest describes a new time entry to start.
 type StartRequest struct {
 	Description string
@@ -43,6 +50,9 @@ type Service interface {
 	// Start begins a new entry. Toggl stops any running entry automatically.
 	Start(ctx context.Context, req StartRequest) (TimeEntry, error)
 	Stop(ctx context.Context, entryID int64) (TimeEntry, error)
+	// Log creates a finished entry. Unlike Start, it leaves a running entry
+	// running (confirmed live).
+	Log(ctx context.Context, req LogRequest) (TimeEntry, error)
 	Update(ctx context.Context, entry TimeEntry) (TimeEntry, error)
 	Delete(ctx context.Context, entryID int64) error
 }

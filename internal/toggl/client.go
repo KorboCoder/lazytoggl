@@ -208,6 +208,26 @@ func (c *Client) Start(ctx context.Context, req StartRequest) (TimeEntry, error)
 	return decodeTimeEntry(raw)
 }
 
+func (c *Client) Log(ctx context.Context, req LogRequest) (TimeEntry, error) {
+	body := map[string]any{
+		"workspace_id": c.workspaceID,
+		"description":  req.Description,
+		"start":        req.Start.Format(time.RFC3339),
+		"stop":         req.Stop.Format(time.RFC3339),
+		"duration":     int64(req.Stop.Sub(req.Start).Seconds()),
+		"created_with": createdWith,
+	}
+	if req.ProjectID != 0 {
+		body["project_id"] = req.ProjectID
+	}
+	path := fmt.Sprintf("/workspaces/%d/time_entries", c.workspaceID)
+	raw, err := c.do(ctx, http.MethodPost, path, body)
+	if err != nil {
+		return TimeEntry{}, err
+	}
+	return decodeTimeEntry(raw)
+}
+
 func (c *Client) Stop(ctx context.Context, entryID int64) (TimeEntry, error) {
 	path := fmt.Sprintf("/workspaces/%d/time_entries/%d/stop", c.workspaceID, entryID)
 	raw, err := c.do(ctx, http.MethodPatch, path, nil)

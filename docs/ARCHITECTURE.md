@@ -39,6 +39,7 @@ type Service interface {
     CreateProject(ctx context.Context, name string) (Project, error)
     Start(ctx context.Context, req StartRequest) (TimeEntry, error)
     Stop(ctx context.Context, entryID int64) (TimeEntry, error)
+    Log(ctx context.Context, req LogRequest) (TimeEntry, error) // a finished entry; leaves the timer running
     Update(ctx context.Context, entry TimeEntry) (TimeEntry, error)
     Delete(ctx context.Context, entryID int64) error
 }
@@ -82,6 +83,7 @@ docs and community API reference during Phase 2 implementation (`internal/toggl/
 | Create project | `POST /workspaces/{workspace_id}/projects` with `{"name", "active": true}`; only when an entry is saved with a `(new)` project, right before the entry's own request. A taken name is a `400` |
 | Start | `POST /workspaces/{workspace_id}/time_entries` with `description`, `start` (RFC3339), `duration: -1`, `created_with: "lazytoggl"`, optional `project_id` |
 | Stop | `PATCH /workspaces/{workspace_id}/time_entries/{id}/stop` (no body) |
+| Log entry | `POST /workspaces/{workspace_id}/time_entries` with `description`, `start`, `stop` (RFC3339), `duration` (seconds), `created_with`, optional `project_id`. A finished entry: unlike Start, it leaves a running entry running (confirmed live) |
 | Edit | `PUT /workspaces/{workspace_id}/time_entries/{id}`; `stop`/`duration` only sent when the entry is finished, omitted while running; `project_id` always sent, `null` for no project (leaving it out would keep the old project) |
 | Delete | `DELETE /workspaces/{workspace_id}/time_entries/{id}` |
 
@@ -118,6 +120,11 @@ either shape works.
   `"project_id": null` (and the usual `workspace_id`, `description`, `start`,
   `stop`, `duration`) removes the project; the response has `project_id: null`.
 - **Deleting:** `DELETE` on a time entry or a project returns `200`.
+- **Logging a finished entry doesn't stop a running one** (confirmed live
+  2026-11-10, change `log-past-entry`): with a timer running, `POST .../time_entries`
+  with `start`, `stop`, and `duration` created the finished entry, and
+  `GET /me/time_entries/current` still returned the running entry with `stop: null`.
+  Only a new *running* entry (`duration: -1`) stops the current one.
 - **Not checked:** whether `GET .../projects` without parameters includes archived
   projects (this workspace had none), and that `?page=N` is the paging parameter
   (this workspace has 3 projects). The client stops as soon as a page brings no new
@@ -141,7 +148,8 @@ Design consequences (these are architectural constraints, not optimizations):
    response updates local state; never refetch after a mutation. Starting or saving
    with a new project costs 2: the project is created first and added to the
    session's project map from the response, then the entry is saved with its ID.
-   Browsing, filtering, or picking projects costs nothing.
+   Browsing, filtering, or picking projects costs nothing. Logging a past entry (`m`)
+   costs 1, or 2 with a new project; opening or cancelling the dialog costs nothing.
 3. `workspace_id` (from onboarding's `GET /me`) is cached in the config file so later
    launches skip `/me` entirely.
 4. **Projects are fetched once per session** (at startup). A manual refresh (`r`)

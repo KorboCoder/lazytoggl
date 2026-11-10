@@ -32,6 +32,13 @@ type EditSubmitMsg struct {
 	NewProject string
 }
 
+// LogSubmitMsg asks the app to create a finished entry. A non-empty
+// NewProject is created first and the entry logged on it.
+type LogSubmitMsg struct {
+	Req        toggl.LogRequest
+	NewProject string
+}
+
 // DeleteConfirmMsg asks the app to delete an entry.
 type DeleteConfirmMsg struct{ EntryID int64 }
 

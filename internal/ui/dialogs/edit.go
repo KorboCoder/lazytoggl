@@ -67,9 +67,36 @@ type Edit struct {
 	dtFrom    time.Time
 	// reviewing is set while the before/after review is shown.
 	reviewing bool
+
+	// logMode makes this the log-entry dialog: a new, finished entry whose
+	// orig is the defaults it opened with (see NewLog).
+	logMode bool
+	// confirmingDiscard is set while the log dialog asks whether to throw
+	// away a changed draft. Like the review, it ignores every other key.
+	confirmingDiscard bool
 }
 
 const dayMinutes = 24 * 60
+
+// NewLog opens the log-entry dialog: the edit form for a new, finished
+// entry, defaulting like Toggl's manual mode to the 30 minutes ending now
+// (to the minute). The defaults are its orig, so changes() reports exactly
+// what the user changed.
+func NewLog(now time.Time, projects []toggl.Project) *Edit {
+	n := now.Local()
+	stop := time.Date(n.Year(), n.Month(), n.Day(), n.Hour(), n.Minute(), 0, 0, time.Local)
+	start := stop.Add(-30 * time.Minute)
+	d := NewEdit(toggl.TimeEntry{Start: start, Stop: stop, Duration: int64((30 * time.Minute).Seconds())}, now, projects)
+	d.logMode = true
+	return d
+}
+
+func (d *Edit) title() string {
+	if d.logMode {
+		return "Log entry"
+	}
+	return "Edit entry"
+}
 
 func NewEdit(entry toggl.TimeEntry, now time.Time, projects []toggl.Project) *Edit {
 	ti := textinput.New()
@@ -100,6 +127,18 @@ func NewEdit(entry toggl.TimeEntry, now time.Time, projects []toggl.Project) *Ed
 
 func (d *Edit) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 	k, isKey := msg.(tea.KeyMsg)
+	if d.confirmingDiscard {
+		if isKey {
+			switch k.String() {
+			case "y":
+				return d, closeCmd()
+			case "n", "esc":
+				d.confirmingDiscard = false
+				return d, d.setFocus(d.focus) // restart the input's blink
+			}
+		}
+		return d, nil
+	}
 	if d.reviewing {
 		if isKey {
 			return d, d.updateReview(k)
@@ -136,6 +175,10 @@ func (d *Edit) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 			if len(d.changes()) == 0 {
 				return d, closeCmd()
 			}
+			if d.logMode {
+				d.confirmingDiscard = true
+				return d, nil
+			}
 			d.reviewing = true
 			return d, nil
 		case "tab", "down":
@@ -145,6 +188,9 @@ func (d *Edit) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 		case "enter":
 			switch d.rows[d.focus] {
 			case rowDescription:
+				if d.logMode {
+					return d, d.logCmd()
+				}
 				return d, d.setFocus(d.focus + 1)
 			case rowProject:
 				d.picker = NewProjectPicker(d.projects, d.project.set())
@@ -453,6 +499,13 @@ func (d *Edit) draft() toggl.TimeEntry {
 	return e
 }
 
+// logCmd submits the log-entry dialog's draft as a new finished entry.
+func (d *Edit) logCmd() tea.Cmd {
+	req := toggl.LogRequest{Description: d.description(), ProjectID: d.project.ID, Start: d.start, Stop: d.stop}
+	newProject := d.project.NewName
+	return func() tea.Msg { return LogSubmitMsg{Req: req, NewProject: newProject} }
+}
+
 func (d *Edit) submitCmd() tea.Cmd {
 	e := d.draft()
 	newProject := d.project.NewName
@@ -527,23 +580,27 @@ func (d *Edit) View() string {
 				theme.MutedStyle.Render("0-9 type · h l ^ $ w b move · ctrl+a/x +/-1"),
 				theme.MutedStyle.Render("enter ok · esc revert"))
 		}
+	} else if d.confirmingDiscard {
+		lines = append(lines, theme.MutedStyle.Render("Discard this entry? y discard · n back"))
 	} else if d.pickerOpen || d.at.Open() {
 		lines = append(lines, theme.MutedStyle.Render("↑/↓ choose · enter pick · esc close"))
 	} else if d.rows[d.focus] == rowProject {
 		lines = append(lines, theme.MutedStyle.Render("tab next · enter pick project · esc done"))
+	} else if d.logMode && d.rows[d.focus] == rowDescription {
+		lines = append(lines, theme.MutedStyle.Render("enter log · tab next · @ project · esc cancel"))
 	} else {
 		lines = append(lines, theme.MutedStyle.Render("tab next · enter edit time · esc done"))
 	}
 	switch {
 	case d.at.Open():
 		// Below the description input.
-		return overlayInBox("Edit entry", lines, projectPopup("project", d.at.View(pickerWidth)), 2)
+		return overlayInBox(d.title(), lines, projectPopup("project", d.at.View(pickerWidth)), 2)
 	case d.pickerOpen:
 		// The project row is last, so the picker opens upward from it.
 		pop := projectPopup("project", d.picker.View())
-		return overlayInBox("Edit entry", lines, pop, max(0, rowY(d.focus)-lipgloss.Height(pop)))
+		return overlayInBox(d.title(), lines, pop, max(0, rowY(d.focus)-lipgloss.Height(pop)))
 	}
-	view := box("Edit entry", lines, boxWidth)
+	view := box(d.title(), lines, boxWidth)
 	if !d.fieldOpen {
 		return view
 	}
