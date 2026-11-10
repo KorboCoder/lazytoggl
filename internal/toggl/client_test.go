@@ -266,6 +266,10 @@ func TestProjectsDoesNotFilterInactive(t *testing.T) {
 	if len(projects) != 2 {
 		t.Fatalf("projects = %d, want 2 (archived projects must still resolve names for old entries)", len(projects))
 	}
+	// Active lets the picker hide archived projects while names still resolve.
+	if !projects[0].Active || projects[1].Active {
+		t.Fatalf("active = %v, %v; want true, false", projects[0].Active, projects[1].Active)
+	}
 	req := (*requests)[0]
 	if req.URL.Path != "/workspaces/555/projects" {
 		t.Fatalf("path = %q, want /workspaces/555/projects", req.URL.Path)

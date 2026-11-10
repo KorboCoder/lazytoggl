@@ -55,8 +55,9 @@ func NewMock() *Mock {
 	}
 	return &Mock{
 		projects: []Project{
-			{ID: 101, Name: "ACME", Color: "#e36a00"},
-			{ID: 102, Name: "Internal", Color: "#2da608"},
+			{ID: 101, Name: "ACME", Color: "#e36a00", Active: true},
+			{ID: 102, Name: "Internal", Color: "#2da608", Active: true},
+			{ID: 103, Name: "Old Client", Color: "#999999"}, // archived
 		},
 		entries: []TimeEntry{
 			{ID: 1, WorkspaceID: 1, ProjectID: 101, Description: "Writing project plan",
