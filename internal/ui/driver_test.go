@@ -60,8 +60,8 @@ func newDriver(t *testing.T) *driver {
 	mm, _ = d.m.Update(tickMsg(fixedNow)) // discard the re-arm tick cmd
 	d.m = mm.(Model)
 	d.feed(dataLoadedMsg{entries: fixtureEntries(), projects: []toggl.Project{
-		{ID: 101, Name: "ACME", Color: "#e36a00"},
-		{ID: 102, Name: "Internal", Color: "#2da608"},
+		{ID: 101, Name: "ACME", Color: "#e36a00", Active: true},
+		{ID: 102, Name: "Internal", Color: "#2da608", Active: true},
 	}})
 	return d
 }
@@ -96,7 +96,7 @@ func (d *driver) feed(msg tea.Msg) {
 	d.t.Helper()
 	switch msg.(type) {
 	case dataLoadedMsg, entryStartedMsg, entryStoppedMsg, entryPausedMsg, entryUpdatedMsg,
-		entryDeletedMsg, errMsg,
+		entryDeletedMsg, errMsg, projectCreatedMsg,
 		dialogs.CloseMsg, dialogs.StartSubmitMsg, dialogs.EditSubmitMsg,
 		dialogs.DeleteConfirmMsg:
 		mm, cmd := d.m.Update(msg)
