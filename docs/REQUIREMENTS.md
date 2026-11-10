@@ -5,7 +5,7 @@
 1. **Onboarding.** On first run (no token in the keychain), prompt for the Toggl API
    token, validate it with `GET /me`, store it in the OS keychain, and cache the default
    `workspace_id` in the config file. The token never touches disk in plaintext.
-2. **Start a time entry** with a description.
+2. **Start a time entry** with a description and, optionally, a project.
 3. **Stop the active entry.**
 4. **Active-timer panel** showing the running entry's description, project, and a
    live-ticking elapsed time (computed locally from the entry's start timestamp — no API
@@ -14,10 +14,16 @@
    per-day totals.
 6. **Resume** — select a past entry and start a new entry pre-filled with its
    description/project.
-7. **Edit** an entry's description, start/stop date and time, and duration (times are
+7. **Projects** — pick, clear, or create an entry's project in the start and edit
+   dialogs, from a project row's picker or by typing `@` in the description (as in
+   the Toggl app). The list is "No project" (when there is one to remove), then
+   active projects A–Z; typing filters by substring and offers `+ Create "<name>"`
+   when no name matches exactly. A new project is created only when the entry is
+   saved (1 extra request).
+8. **Edit** an entry's description, project, start/stop date and time, and duration (times are
    edited as `HH:MM`, with the date beside them in the same field), reviewing a
    before → after summary before saving; **delete** with a confirmation dialog.
-8. **Manual refresh only** (`r`). No background polling. Every mutation updates local
+9. **Manual refresh only** (`r`). No background polling. Every mutation updates local
    state from the API response, so normal usage costs 1 request per action plus 1 fetch
    at startup. This is a hard requirement from the Free-plan rate limit
    (see [ARCHITECTURE.md](ARCHITECTURE.md#rate-limits)).
@@ -52,6 +58,27 @@ toggles, `enter` acts on the selection.
 | `?` | anywhere | Help overlay |
 | `q` / `ctrl+c` | anywhere | Quit (`esc` closes dialogs) |
 
+### Start dialog
+
+| Key | Context | Action |
+|---|---|---|
+| `tab` / `shift+tab`, `down` / `up` | form | Move between description and project |
+| `enter` | description | Start the timer (while no `@` dropdown is open) |
+| `enter` | project row | Open the project picker |
+| `esc` | form | Cancel |
+
+### Projects (start and edit dialogs)
+
+| Key | Context | Action |
+|---|---|---|
+| `@` | description, at the start or after a space | Open the project dropdown below the description; the text after `@` is its search (spaces included). `@` inside a word types normally |
+| letters, `backspace` | dropdown | Edit the description and refilter; deleting the `@` or moving the cursor before it closes the dropdown |
+| letters, `backspace` | picker | Edit the picker's own search |
+| `up` / `down`, `ctrl+p` / `ctrl+n` | dropdown, picker | Move the selection |
+| `enter`, `tab` | dropdown, picker | Pick: set the project row (the dropdown also removes `@search` from the description). Never starts or saves |
+| `esc` | dropdown | Close it, keeping the typed text |
+| `esc` | picker | Close it, project unchanged |
+
 ### Edit dialog
 
 | Key | Context | Action |
@@ -59,14 +86,15 @@ toggles, `enter` acts on the selection.
 | `tab` / `shift+tab`, `down` / `up` | form | Move between rows (wraps) |
 | `enter` | description row | Move to the next row |
 | `enter` | start / stop / duration row | Open that row's field: date + `HH:MM` for start / stop, `HH:MM` for duration |
-| `esc` | form | Close: no changes → closes with no API call; otherwise opens the review |
+| `enter` | project row (last row) | Open the project picker |
+| `esc` | form | Close: no changes → closes with no API call; otherwise opens the review (while the `@` dropdown is open, `esc` only closes the dropdown) |
 | `0`–`9` | time field | Overwrite the digit under the cursor and advance (skips the `:`) |
 | `h` / `l`, `^` / `$`, `w` / `b` | time field | Move one digit; first / last digit; minutes / hours |
 | `tab` / `shift+tab` | start / stop field | Switch between the date and the time (opens on the time; no effect in the duration field) |
 | `ctrl+a` / `ctrl+x` | time field | +1 / −1 on the hours or minutes under the cursor (minutes carry into hours; on start / stop, hours carry across midnight into the date; duration stays within 00:01–23:59) |
 | `ctrl+a` / `ctrl+x` | date (start / stop field) | +1 / −1 day (digits and motions do nothing here) |
 | `enter` / `esc` | time field | Accept (hours 00–23, minutes 00–59) / revert the field |
-| `y` / `enter` | review | Save (one API request) |
+| `y` / `enter` | review | Save (one API request; two when it creates a `(new)` project first) |
 | `esc` | review | Back to the form, edits intact |
 | `n` | review | Discard all edits and close |
 
@@ -108,7 +136,8 @@ that it drops off on the next refresh.
 
 Roughly in expected priority order; reordered by feedback during Phase 3.
 
-- Project / tag / client pickers with fuzzy search when starting or editing an entry
+- Tag / client pickers when starting or editing an entry (projects are done; fuzzy
+  matching for the project list is a possible follow-up)
 - Billable flag
 - Reports: daily/weekly totals view (Reports API)
 - Multi-workspace switching

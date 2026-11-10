@@ -3,6 +3,8 @@ package toggl
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -104,6 +106,25 @@ func TestStartSendsExpectedBody(t *testing.T) {
 	if wid, ok := body["workspace_id"].(float64); !ok || int64(wid) != 555 {
 		t.Fatalf("request body workspace_id = %v, want 555", body["workspace_id"])
 	}
+	if pid, ok := body["project_id"].(float64); !ok || pid != 101 {
+		t.Fatalf("project_id = %v, want 101", body["project_id"])
+	}
+}
+
+// A new entry with no project leaves project_id out entirely.
+func TestStartOmitsProjectWhenNone(t *testing.T) {
+	var body map[string]any
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, 200, map[string]any{"id": 1, "workspace_id": 555, "description": "x",
+			"start": "2026-07-15T10:00:00Z", "stop": nil, "duration": -1})
+	})
+	if _, err := c.Start(context.Background(), StartRequest{Description: "x"}); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	if _, has := body["project_id"]; has {
+		t.Fatalf("project_id sent for an entry with no project: %v", body)
+	}
 }
 
 func TestStopUsesPatchOnStopPath(t *testing.T) {
@@ -148,10 +169,56 @@ func TestUpdateSendsStopOnlyWhenFinished(t *testing.T) {
 	if _, hasDuration := body["duration"]; !hasDuration {
 		t.Fatal("update body missing duration")
 	}
+	// Always sent: a PUT that omits project_id keeps the old project.
+	if v, has := body["project_id"]; !has || v != nil {
+		t.Fatalf("project_id = %v (present %v), want an explicit null for no project", v, has)
+	}
 
 	req := (*requests)[0]
 	if req.Method != http.MethodPut || req.URL.Path != "/workspaces/555/time_entries/3" {
 		t.Fatalf("request = %s %s, want PUT /workspaces/555/time_entries/3", req.Method, req.URL.Path)
+	}
+}
+
+// Confirmed live: "project_id": null removes the project (docs/ARCHITECTURE.md).
+func TestUpdateClearsProjectWithNull(t *testing.T) {
+	var raw map[string]json.RawMessage
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&raw)
+		writeJSON(w, 200, map[string]any{
+			"id": 3, "workspace_id": 555, "project_id": nil, "description": "x",
+			"start": "2026-07-15T09:00:00Z", "stop": "2026-07-15T10:00:00Z", "duration": 3600,
+		})
+	})
+	start := time.Date(2026, 7, 15, 9, 0, 0, 0, time.UTC)
+	e, err := c.Update(context.Background(), TimeEntry{ID: 3, Description: "x", Start: start, Stop: start.Add(time.Hour)})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if string(raw["project_id"]) != "null" {
+		t.Fatalf("project_id sent as %q, want null", raw["project_id"])
+	}
+	if e.ProjectID != 0 {
+		t.Fatalf("decoded ProjectID = %d, want 0", e.ProjectID)
+	}
+}
+
+func TestUpdateSendsProjectID(t *testing.T) {
+	var body map[string]any
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, 200, map[string]any{
+			"id": 3, "workspace_id": 555, "project_id": 101, "description": "x",
+			"start": "2026-07-15T09:00:00Z", "stop": nil, "duration": -1,
+		})
+	})
+	_, err := c.Update(context.Background(), TimeEntry{ID: 3, ProjectID: 101, Description: "x",
+		Start: time.Date(2026, 7, 15, 9, 0, 0, 0, time.UTC), Duration: -1})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if pid, ok := body["project_id"].(float64); !ok || pid != 101 {
+		t.Fatalf("project_id = %v, want 101", body["project_id"])
 	}
 }
 
@@ -266,6 +333,10 @@ func TestProjectsDoesNotFilterInactive(t *testing.T) {
 	if len(projects) != 2 {
 		t.Fatalf("projects = %d, want 2 (archived projects must still resolve names for old entries)", len(projects))
 	}
+	// Active lets the picker hide archived projects while names still resolve.
+	if !projects[0].Active || projects[1].Active {
+		t.Fatalf("active = %v, %v; want true, false", projects[0].Active, projects[1].Active)
+	}
 	req := (*requests)[0]
 	if req.URL.Path != "/workspaces/555/projects" {
 		t.Fatalf("path = %q, want /workspaces/555/projects", req.URL.Path)
@@ -283,14 +354,27 @@ func TestRateLimitedReturnsErrRateLimited(t *testing.T) {
 }
 
 func TestInvalidTokenReturnsErrInvalidToken(t *testing.T) {
-	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
-		c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(status)
-		})
-		_, err := c.Me(context.Background())
-		if err != ErrInvalidToken {
-			t.Fatalf("status %d: err = %v, want ErrInvalidToken", status, err)
-		}
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	})
+	if _, err := c.Me(context.Background()); err != ErrInvalidToken {
+		t.Fatalf("401: err = %v, want ErrInvalidToken", err)
+	}
+}
+
+// 403 is its own error: Toggl uses it for a rejected Basic login and for a
+// refused action (e.g. a workspace where only admins may create projects).
+func TestForbidden403ReturnsErrForbidden(t *testing.T) {
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("Incorrect username and/or password"))
+	})
+	_, err := c.CreateProject(context.Background(), "x")
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("403: err = %v, want ErrForbidden", err)
+	}
+	if errors.Is(err, ErrInvalidToken) {
+		t.Fatal("403 must not read as an invalid token outside onboarding")
 	}
 }
 
@@ -401,5 +485,108 @@ func TestRetriedPostResendsFullBody(t *testing.T) {
 	}
 	if len(bodies) != 2 || bodies[0] != bodies[1] || bodies[1] == "" {
 		t.Fatalf("retried request must resend the identical body; got %q then %q", bodies[0], bodies[1])
+	}
+}
+
+// Pinned against the live API (docs/ARCHITECTURE.md): name and active are
+// enough, and Toggl picks the colour.
+func TestCreateProjectSendsNameAndActive(t *testing.T) {
+	var body map[string]any
+	c, requests := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, 200, map[string]any{
+			"id": 223149804, "workspace_id": 555, "name": "newclient",
+			"active": true, "color": "#0b83d9", "is_private": true,
+		})
+	})
+	p, err := c.CreateProject(context.Background(), "newclient")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if p.ID != 223149804 || p.Name != "newclient" || !p.Active || p.Color != "#0b83d9" {
+		t.Fatalf("project = %+v, want the decoded response", p)
+	}
+	req := (*requests)[0]
+	if req.Method != http.MethodPost || req.URL.Path != "/workspaces/555/projects" {
+		t.Fatalf("request = %s %s, want POST /workspaces/555/projects", req.Method, req.URL.Path)
+	}
+	if len(body) != 2 || body["name"] != "newclient" || body["active"] != true {
+		t.Fatalf("body = %v, want exactly name and active", body)
+	}
+}
+
+// The projects list is paged at 151 (confirmed live): ask for the next page
+// only while a page comes back full.
+func projectsPage(n, from int) []map[string]any {
+	var out []map[string]any
+	for i := 0; i < n; i++ {
+		out = append(out, map[string]any{"id": from + i, "name": fmt.Sprintf("p%d", from+i), "active": true})
+	}
+	return out
+}
+
+func TestProjectsFollowsFullPages(t *testing.T) {
+	c, requests := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Query().Get("page") {
+		case "", "1":
+			writeJSON(w, 200, projectsPage(151, 1))
+		case "2":
+			writeJSON(w, 200, projectsPage(2, 152))
+		default:
+			t.Errorf("unexpected page %q", r.URL.Query().Get("page"))
+			writeJSON(w, 200, []any{})
+		}
+	})
+	projects, err := c.Projects(context.Background())
+	if err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	if len(projects) != 153 || len(*requests) != 2 {
+		t.Fatalf("got %d projects in %d requests, want 153 in 2", len(projects), len(*requests))
+	}
+}
+
+func TestProjectsStopsAfterShortPage(t *testing.T) {
+	c, requests := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, projectsPage(3, 1))
+	})
+	if _, err := c.Projects(context.Background()); err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	if len(*requests) != 1 {
+		t.Fatalf("requests = %d, want 1 for a short first page", len(*requests))
+	}
+	if q := (*requests)[0].URL.RawQuery; q != "" {
+		t.Fatalf("first request query = %q, want none (same request as before paging)", q)
+	}
+}
+
+// `?page=` was never confirmed live: a server that ignores it would repeat
+// page 1 forever and spend the whole hourly quota. A page with no new
+// projects ends the loop, and a hard cap bounds it regardless.
+func TestProjectsStopsWhenPagesRepeat(t *testing.T) {
+	c, requests := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, projectsPage(151, 1)) // ignores page
+	})
+	projects, err := c.Projects(context.Background())
+	if err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	if len(*requests) != 2 || len(projects) != 151 {
+		t.Fatalf("%d requests, %d projects; want 2 requests and the 151 unique projects", len(*requests), len(projects))
+	}
+}
+
+func TestProjectsPagingIsCapped(t *testing.T) {
+	c, requests := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		page := 1
+		fmt.Sscan(r.URL.Query().Get("page"), &page)
+		writeJSON(w, 200, projectsPage(151, (page-1)*151+1)) // always full, always new
+	})
+	if _, err := c.Projects(context.Background()); err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	if len(*requests) != maxProjectPages {
+		t.Fatalf("%d requests, want the cap of %d", len(*requests), maxProjectPages)
 	}
 }

@@ -18,11 +18,19 @@ type Dialog interface {
 // CloseMsg asks the app to close the open dialog without acting.
 type CloseMsg struct{}
 
-// StartSubmitMsg asks the app to start (or resume) an entry.
-type StartSubmitMsg struct{ Req toggl.StartRequest }
+// StartSubmitMsg asks the app to start (or resume) an entry. A non-empty
+// NewProject is created first and the entry started on it.
+type StartSubmitMsg struct {
+	Req        toggl.StartRequest
+	NewProject string
+}
 
-// EditSubmitMsg asks the app to persist an edited entry.
-type EditSubmitMsg struct{ Entry toggl.TimeEntry }
+// EditSubmitMsg asks the app to persist an edited entry. A non-empty
+// NewProject is created first and the entry saved on it.
+type EditSubmitMsg struct {
+	Entry      toggl.TimeEntry
+	NewProject string
+}
 
 // DeleteConfirmMsg asks the app to delete an entry.
 type DeleteConfirmMsg struct{ EntryID int64 }

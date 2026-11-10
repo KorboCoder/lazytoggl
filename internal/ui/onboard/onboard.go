@@ -7,6 +7,7 @@ package onboard
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -134,10 +135,12 @@ func validateCmd(validate Validate, token string) tea.Cmd {
 }
 
 func friendlyError(err error) string {
-	switch err {
-	case toggl.ErrInvalidToken:
+	switch {
+	// Toggl answers a wrong Basic login with 403, so here it means the
+	// token too.
+	case errors.Is(err, toggl.ErrInvalidToken), errors.Is(err, toggl.ErrForbidden):
 		return "That token was rejected — check it and try again."
-	case toggl.ErrRateLimited:
+	case errors.Is(err, toggl.ErrRateLimited):
 		return "Rate limited — wait a moment and try again."
 	default:
 		return "Couldn't reach Toggl: " + err.Error()

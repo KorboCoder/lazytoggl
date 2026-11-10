@@ -35,6 +35,9 @@ type Model struct {
 
 	entries  []toggl.TimeEntry
 	projects map[int64]toggl.Project
+	// projectsLoaded is set once Projects succeeds. Until then a refresh
+	// fetches them too, and the pickers offer no create option.
+	projectsLoaded bool
 
 	entriesPanel panels.Entries
 	focus        int
@@ -89,6 +92,14 @@ type entryStartedMsg struct{ entry toggl.TimeEntry }
 type entryStoppedMsg struct{ entry toggl.TimeEntry }
 type entryPausedMsg struct{ entry toggl.TimeEntry }
 type entryUpdatedMsg struct{ entry toggl.TimeEntry }
+
+// projectCreatedMsg reports a project created for an entry being saved;
+// next saves the entry with the project's ID.
+type projectCreatedMsg struct {
+	project toggl.Project
+	status  string // shown while next runs: "starting…" or "saving…"
+	next    func(projectID int64) tea.Cmd
+}
 type entryDeletedMsg struct{ id int64 }
 type errMsg struct{ err error }
 
@@ -120,12 +131,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.entries = msg.entries
 		// A refresh reuses the session's project map (projects rarely change
 		// and every request counts against the hourly quota); msg.projects
-		// is non-nil only on the initial load.
+		// is non-nil only when they were fetched. Merged, not replaced, so a
+		// project created before a late load survives it.
 		if msg.projects != nil {
-			m.projects = map[int64]toggl.Project{}
 			for _, p := range msg.projects {
 				m.projects[p.ID] = p
 			}
+			m.projectsLoaded = true
 		}
 		m.setStatus("", false)
 		m.clampCursor()
@@ -190,8 +202,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case errMsg:
 		m.loading = false
 		text := msg.err.Error()
-		if errors.Is(msg.err, toggl.ErrRateLimited) {
+		var create createProjectError
+		switch {
+		case errors.Is(msg.err, toggl.ErrRateLimited):
 			text = "Rate limited by Toggl — the Free plan allows 30 requests/hour. Wait a bit before retrying."
+		case errors.Is(msg.err, toggl.ErrForbidden) && errors.As(msg.err, &create):
+			text = "Toggl refused to create the project — this workspace may only let admins create projects. Nothing was saved."
+		case errors.Is(msg.err, toggl.ErrForbidden):
+			text = "Toggl refused the request — you may not have permission."
 		}
 		m.notice = text
 		m.noticeExpiry = m.now.Add(noticeTTL)
@@ -204,11 +222,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dialogs.StartSubmitMsg:
 		m.dialog = nil
+		if msg.NewProject != "" {
+			req := msg.Req
+			m.setStatus("creating project…", false)
+			return m, m.createProjectCmd(msg.NewProject, "starting…", func(id int64) tea.Cmd {
+				req.ProjectID = id
+				return m.startCmd(req)
+			})
+		}
 		m.setStatus("starting…", false)
 		return m, m.startCmd(msg.Req)
 
+	case projectCreatedMsg:
+		// Added before the entry is saved, so a failed save can reuse it.
+		m.projects[msg.project.ID] = msg.project
+		m.setStatus(msg.status, false)
+		return m, msg.next(msg.project.ID)
+
 	case dialogs.EditSubmitMsg:
 		m.dialog = nil
+		if msg.NewProject != "" {
+			entry := msg.Entry
+			m.setStatus("creating project…", false)
+			return m, m.createProjectCmd(msg.NewProject, "saving…", func(id int64) tea.Cmd {
+				entry.ProjectID = id
+				return m.updateCmd(entry)
+			})
+		}
 		m.setStatus("saving…", false)
 		return m, m.updateCmd(msg.Entry)
 
@@ -265,7 +305,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.keys.Refresh):
 		m.loading = true
 		m.setStatus("refreshing…", false)
-		return m, m.loadCmd(false)
+		return m, m.loadCmd(!m.projectsLoaded)
 
 	case key.Matches(msg, m.keys.Up):
 		m.entriesPanel.Move(rows, -1)
@@ -293,7 +333,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Create):
-		m.dialog = dialogs.NewStart("Start entry", "", 0, "")
+		m.dialog = dialogs.NewStart("Start entry", "", 0, m.projectList())
 		return m, textinput.Blink
 
 	case key.Matches(msg, m.keys.Enter):
@@ -301,7 +341,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Edit):
 		if e := m.actionTarget(rows); e != nil {
-			m.dialog = dialogs.NewEdit(*e, m.now)
+			m.dialog = dialogs.NewEdit(*e, m.now, m.projectList())
 			return m, textinput.Blink
 		}
 		return m, nil
@@ -347,7 +387,7 @@ func (m Model) handleEnter(rows []panels.Row) (tea.Model, tea.Cmd) {
 			m.setStatus("stopping…", false)
 			return m, m.stopCmd(run.ID)
 		}
-		m.dialog = dialogs.NewStart("Start entry", "", 0, "")
+		m.dialog = dialogs.NewStart("Start entry", "", 0, m.projectList())
 		return m, textinput.Blink
 	}
 
@@ -360,7 +400,7 @@ func (m Model) handleEnter(rows []panels.Row) (tea.Model, tea.Cmd) {
 		return m, m.stopCmd(row.Entry.ID)
 	}
 	m.dialog = dialogs.NewStart("Resume entry", row.Entry.Description,
-		row.Entry.ProjectID, m.projectName(row.Entry.ProjectID))
+		row.Entry.ProjectID, m.projectList())
 	return m, textinput.Blink
 }
 
@@ -501,6 +541,20 @@ func (m Model) pausedEntry() *toggl.TimeEntry {
 	return nil
 }
 
+// projectList is the session's projects, archived included, for the
+// dialogs' pickers (which order and filter them). It is nil until projects
+// have loaded, which the pickers show instead of offering to create them.
+func (m Model) projectList() []toggl.Project {
+	if !m.projectsLoaded {
+		return nil
+	}
+	out := make([]toggl.Project, 0, len(m.projects))
+	for _, p := range m.projects {
+		out = append(out, p)
+	}
+	return out
+}
+
 func (m Model) projectName(id int64) string {
 	if p, ok := m.projects[id]; ok && id != 0 {
 		return p.Name
@@ -527,9 +581,36 @@ func (m Model) loadCmd(withProjects bool) tea.Cmd {
 			if err != nil {
 				return errMsg{err}
 			}
-			msg.projects = projects
+			// Non-nil marks them fetched, even for a workspace with none.
+			msg.projects = append([]toggl.Project{}, projects...)
 		}
 		return msg
+	}
+}
+
+// createProjectError marks a failure to create a project, so the notice can
+// say what was refused and that the entry wasn't saved either.
+type createProjectError struct {
+	name string
+	err  error
+}
+
+func (e createProjectError) Error() string {
+	return fmt.Sprintf("creating project %q: %v", e.name, e.err)
+}
+
+func (e createProjectError) Unwrap() error { return e.err }
+
+// createProjectCmd creates a project for an entry being saved (1 request);
+// next then saves the entry with it.
+func (m Model) createProjectCmd(name, status string, next func(int64) tea.Cmd) tea.Cmd {
+	svc := m.svc
+	return func() tea.Msg {
+		p, err := svc.CreateProject(context.Background(), name)
+		if err != nil {
+			return errMsg{createProjectError{name: name, err: err}}
+		}
+		return projectCreatedMsg{project: p, status: status, next: next}
 	}
 }
 

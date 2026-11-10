@@ -3,7 +3,9 @@ package toggl
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -55,8 +57,9 @@ func NewMock() *Mock {
 	}
 	return &Mock{
 		projects: []Project{
-			{ID: 101, Name: "ACME", Color: "#e36a00"},
-			{ID: 102, Name: "Internal", Color: "#2da608"},
+			{ID: 101, Name: "ACME", Color: "#e36a00", Active: true},
+			{ID: 102, Name: "Internal", Color: "#2da608", Active: true},
+			{ID: 103, Name: "Old Client", Color: "#999999"}, // archived
 		},
 		entries: []TimeEntry{
 			{ID: 1, WorkspaceID: 1, ProjectID: 101, Description: "Writing project plan",
@@ -106,6 +109,23 @@ func (m *Mock) Projects(ctx context.Context) ([]Project, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return append([]Project(nil), m.projects...), nil
+}
+
+func (m *Mock) CreateProject(ctx context.Context, name string) (Project, error) {
+	m.countCall("CreateProject")
+	time.Sleep(mockLatency)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, p := range m.projects {
+		if strings.EqualFold(p.Name, name) {
+			// The same error the client returns for the live API's 400.
+			return Project{}, &APIError{StatusCode: 400, Body: fmt.Sprintf("\"a project with the name '%s' already exists\"", name)}
+		}
+	}
+	m.nextID++
+	p := Project{ID: m.nextID, Name: name, Color: "#0b83d9", Active: true}
+	m.projects = append(m.projects, p)
+	return p, nil
 }
 
 func (m *Mock) Start(ctx context.Context, req StartRequest) (TimeEntry, error) {

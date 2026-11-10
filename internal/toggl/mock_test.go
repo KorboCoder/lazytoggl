@@ -2,6 +2,7 @@ package toggl
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -193,5 +194,59 @@ func TestMockSeedIsInWindowAtAnyTimeOfDay(t *testing.T) {
 		if !e.Running() && e.Stop.After(now) {
 			t.Errorf("seed entry %d %q stops %s, after now", e.ID, e.Description, e.Stop)
 		}
+	}
+}
+
+// The mock seeds an archived project so -mock shows the picker hiding it.
+func TestMockSeedsAnArchivedProject(t *testing.T) {
+	projects, err := NewMock().Projects(context.Background())
+	if err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	var active, archived int
+	for _, p := range projects {
+		if p.Active {
+			active++
+		} else {
+			archived++
+		}
+	}
+	if active != 2 || archived != 1 {
+		t.Fatalf("active %d archived %d, want 2 and 1", active, archived)
+	}
+}
+
+func TestMockCreateProject(t *testing.T) {
+	m := NewMock()
+	ctx := context.Background()
+	p, err := m.CreateProject(ctx, "newclient")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if p.ID == 0 || p.Name != "newclient" || !p.Active {
+		t.Fatalf("project = %+v, want an active newclient with an ID", p)
+	}
+	projects, _ := m.Projects(ctx)
+	found := false
+	for _, q := range projects {
+		found = found || q.ID == p.ID
+	}
+	if !found {
+		t.Fatal("created project missing from Projects")
+	}
+	// Like the API, a duplicate name is refused.
+	if _, err := m.CreateProject(ctx, "newclient"); err == nil {
+		t.Fatal("duplicate name accepted")
+	}
+}
+
+// The mock refuses a duplicate with the client's error type, so -mock shows
+// the same notice as the live API.
+func TestMockDuplicateProjectIsAPIError(t *testing.T) {
+	m := NewMock()
+	_, err := m.CreateProject(context.Background(), "ACME")
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.StatusCode != 400 {
+		t.Fatalf("err = %v, want an *APIError with status 400", err)
 	}
 }

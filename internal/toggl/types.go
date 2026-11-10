@@ -33,6 +33,9 @@ type Project struct {
 	ID    int64
 	Name  string
 	Color string // hex, e.g. "#e36a00"
+	// Active is false for an archived project. Archived projects are kept
+	// so old entries still show their names, but aren't offered to pick.
+	Active bool
 }
 
 type Workspace struct {
