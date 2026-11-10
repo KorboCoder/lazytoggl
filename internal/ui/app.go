@@ -89,6 +89,13 @@ type entryStartedMsg struct{ entry toggl.TimeEntry }
 type entryStoppedMsg struct{ entry toggl.TimeEntry }
 type entryPausedMsg struct{ entry toggl.TimeEntry }
 type entryUpdatedMsg struct{ entry toggl.TimeEntry }
+
+// projectCreatedMsg reports a project created for an entry being saved;
+// next saves the entry with the project's ID.
+type projectCreatedMsg struct {
+	project toggl.Project
+	next    func(projectID int64) tea.Cmd
+}
 type entryDeletedMsg struct{ id int64 }
 type errMsg struct{ err error }
 
@@ -204,8 +211,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dialogs.StartSubmitMsg:
 		m.dialog = nil
+		if msg.NewProject != "" {
+			req := msg.Req
+			m.setStatus("creating project…", false)
+			return m, m.createProjectCmd(msg.NewProject, func(id int64) tea.Cmd {
+				req.ProjectID = id
+				return m.startCmd(req)
+			})
+		}
 		m.setStatus("starting…", false)
 		return m, m.startCmd(msg.Req)
+
+	case projectCreatedMsg:
+		// Added before the entry is saved, so a failed save can reuse it.
+		m.projects[msg.project.ID] = msg.project
+		m.setStatus("saving…", false)
+		return m, msg.next(msg.project.ID)
 
 	case dialogs.EditSubmitMsg:
 		m.dialog = nil
@@ -293,7 +314,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Create):
-		m.dialog = dialogs.NewStart("Start entry", "", 0, "")
+		m.dialog = dialogs.NewStart("Start entry", "", 0, m.projectList())
 		return m, textinput.Blink
 
 	case key.Matches(msg, m.keys.Enter):
@@ -347,7 +368,7 @@ func (m Model) handleEnter(rows []panels.Row) (tea.Model, tea.Cmd) {
 			m.setStatus("stopping…", false)
 			return m, m.stopCmd(run.ID)
 		}
-		m.dialog = dialogs.NewStart("Start entry", "", 0, "")
+		m.dialog = dialogs.NewStart("Start entry", "", 0, m.projectList())
 		return m, textinput.Blink
 	}
 
@@ -360,7 +381,7 @@ func (m Model) handleEnter(rows []panels.Row) (tea.Model, tea.Cmd) {
 		return m, m.stopCmd(row.Entry.ID)
 	}
 	m.dialog = dialogs.NewStart("Resume entry", row.Entry.Description,
-		row.Entry.ProjectID, m.projectName(row.Entry.ProjectID))
+		row.Entry.ProjectID, m.projectList())
 	return m, textinput.Blink
 }
 
@@ -501,6 +522,16 @@ func (m Model) pausedEntry() *toggl.TimeEntry {
 	return nil
 }
 
+// projectList is the session's projects, archived included, for the
+// dialogs' pickers (which order and filter them).
+func (m Model) projectList() []toggl.Project {
+	out := make([]toggl.Project, 0, len(m.projects))
+	for _, p := range m.projects {
+		out = append(out, p)
+	}
+	return out
+}
+
 func (m Model) projectName(id int64) string {
 	if p, ok := m.projects[id]; ok && id != 0 {
 		return p.Name
@@ -530,6 +561,19 @@ func (m Model) loadCmd(withProjects bool) tea.Cmd {
 			msg.projects = projects
 		}
 		return msg
+	}
+}
+
+// createProjectCmd creates a project for an entry being saved (1 request);
+// next then saves the entry with it.
+func (m Model) createProjectCmd(name string, next func(int64) tea.Cmd) tea.Cmd {
+	svc := m.svc
+	return func() tea.Msg {
+		p, err := svc.CreateProject(context.Background(), name)
+		if err != nil {
+			return errMsg{err}
+		}
+		return projectCreatedMsg{project: p, next: next}
 	}
 }
 
