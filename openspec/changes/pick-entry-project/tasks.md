@@ -6,7 +6,7 @@ add `Old Client` (103, inactive) to the loaded projects.
 
 ## 1. Live API facts (needs the user's OK: about 2–3 requests)
 
-- [ ] 1.1 With the user's OK, confirm against the live API, on a throwaway project and entry, the four facts in design.md §8: a `PUT` with `"project_id": null` clears the project; a `POST .../projects` with `name` and `active` is accepted (note the colour returned); whether `GET .../projects` pages at the user's project count; and what a duplicate name returns. Record the results in `docs/ARCHITECTURE.md`'s API notes. Verify by reading the recorded responses. If a fact differs from the design, pause and update design.md before group 2
+- [x] 1.1 With the user's OK, confirm against the live API, on a throwaway project and entry, the four facts in design.md §8: a `PUT` with `"project_id": null` clears the project; a `POST .../projects` with `name` and `active` is accepted (note the colour returned); whether `GET .../projects` pages at the user's project count; and what a duplicate name returns. Record the results in `docs/ARCHITECTURE.md`'s API notes. Verify by reading the recorded responses. If a fact differs from the design, pause and update design.md before group 2
 
 ## 2. `internal/toggl`
 
@@ -14,6 +14,7 @@ add `Old Client` (103, inactive) to the loaded projects.
 - [ ] 2.2 Add `Service.CreateProject(ctx, name)`. Client: `POST /workspaces/{wid}/projects`, pinned by `TestCreateProjectSendsNameAndActive` (`client_test.go`: method, path, body, decoded response). Mock: append with the next ID, pinned by `TestMockCreateProject`
 - [ ] 2.3 Make `Update` always send `project_id`, as `null` when 0 (or the form task 1.1 found). Verify with `TestUpdateClearsProjectWithNull` and extend `TestUpdateSendsStopOnlyWhenFinished` to assert `project_id` is present. `Start` still leaves it out: extend `TestStartSendsExpectedBody`
 - [ ] 2.4 Add `ErrForbidden` for 403 (401 stays `ErrInvalidToken`). Verify with `TestForbidden403ReturnsErrForbidden` and update `TestInvalidTokenReturnsErrInvalidToken` to cover 401 only. Make `onboard.friendlyError` use `errors.Is` and treat both as a rejected token, verified with a new case in the onboarding tests
+- [ ] 2.6 Follow project pages: `Client.Projects` requests `?page=N` while a page holds 151 projects (the page size task 1.1 found), and stops at the first short page. Verify with `TestProjectsFollowsFullPages` (two pages, 151 + 2: two requests, 153 projects) and `TestProjectsStopsAfterShortPage` (one request) in `client_test.go`
 - [ ] 2.5 Update `docs/ARCHITECTURE.md`: the `Service` interface listing, the endpoint table (create project, clearing a project), the 403 note, and request costs (a new project adds 1). Verify by reading it against design.md
 
 ## 3. `ProjectList`
