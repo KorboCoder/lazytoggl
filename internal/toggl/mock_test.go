@@ -195,3 +195,22 @@ func TestMockSeedIsInWindowAtAnyTimeOfDay(t *testing.T) {
 		}
 	}
 }
+
+// The mock seeds an archived project so -mock shows the picker hiding it.
+func TestMockSeedsAnArchivedProject(t *testing.T) {
+	projects, err := NewMock().Projects(context.Background())
+	if err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	var active, archived int
+	for _, p := range projects {
+		if p.Active {
+			active++
+		} else {
+			archived++
+		}
+	}
+	if active != 2 || archived != 1 {
+		t.Fatalf("active %d archived %d, want 2 and 1", active, archived)
+	}
+}

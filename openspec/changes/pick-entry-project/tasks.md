@@ -10,7 +10,7 @@ add `Old Client` (103, inactive) to the loaded projects.
 
 ## 2. `internal/toggl`
 
-- [ ] 2.1 Add `Project.Active`, decoded from `active`; extend `TestProjectsDoesNotFilterInactive` (`client_test.go`) to assert both values. Add the archived `Old Client` to the mock seed and check it in `mock_test.go`
+- [x] 2.1 Add `Project.Active`, decoded from `active`; extend `TestProjectsDoesNotFilterInactive` (`client_test.go`) to assert both values. Add the archived `Old Client` to the mock seed and check it in `mock_test.go`
 - [ ] 2.2 Add `Service.CreateProject(ctx, name)`. Client: `POST /workspaces/{wid}/projects`, pinned by `TestCreateProjectSendsNameAndActive` (`client_test.go`: method, path, body, decoded response). Mock: append with the next ID, pinned by `TestMockCreateProject`
 - [ ] 2.3 Make `Update` always send `project_id`, as `null` when 0 (or the form task 1.1 found). Verify with `TestUpdateClearsProjectWithNull` and extend `TestUpdateSendsStopOnlyWhenFinished` to assert `project_id` is present. `Start` still leaves it out: extend `TestStartSendsExpectedBody`
 - [ ] 2.4 Add `ErrForbidden` for 403 (401 stays `ErrInvalidToken`). Verify with `TestForbidden403ReturnsErrForbidden` and update `TestInvalidTokenReturnsErrInvalidToken` to cover 401 only. Make `onboard.friendlyError` use `errors.Is` and treat both as a rejected token, verified with a new case in the onboarding tests
@@ -18,9 +18,9 @@ add `Old Client` (103, inactive) to the loaded projects.
 
 ## 3. `ProjectList`
 
-- [ ] 3.1 Create `internal/ui/dialogs/projectlist.go` with the empty-search order: "No project" only when the entry has a project, then active projects A–Z ignoring case, with archived ones hidden. Verify with `TestProjectListEmptySearchOrder` and `TestProjectListNoProjectOnlyWithCurrent` in a new `projectlist_test.go`
-- [ ] 3.2 Substring filtering (spaces count, A–Z kept, "No project" dropped for a non-empty search) and the create option (last; only option when nothing matches; hidden on an exact match ignoring case and spaces, archived names included). Verify with `TestProjectListFiltersBySubstring`, `TestProjectListSpacesArePartOfSearch`, `TestProjectListCreateWhenNothingMatches`, `TestProjectListCreateAfterPartialMatches`, `TestProjectListNoCreateOnExactMatch`, `TestProjectListNoCreateForArchivedName`
-- [ ] 3.3 Selection and view: the selection resets on a query change, `Move` clamps, and at most 6 rows show with a scroll window that follows the selection. Verify with `TestProjectListSelectionResetsOnQuery`, `TestProjectListMoveClamps`, `TestProjectListViewScrollsToSelection`
+- [x] 3.1 Create `internal/ui/dialogs/projectlist.go` with the empty-search order: "No project" only when the entry has a project, then active projects A–Z ignoring case, with archived ones hidden. Verify with `TestProjectListEmptySearchOrder` and `TestProjectListNoProjectOnlyWithCurrent` in a new `projectlist_test.go`
+- [x] 3.2 Substring filtering (spaces count, A–Z kept, "No project" dropped for a non-empty search) and the create option (last; only option when nothing matches; hidden on an exact match ignoring case and spaces, archived names included). Verify with `TestProjectListFiltersBySubstring`, `TestProjectListSpacesArePartOfSearch`, `TestProjectListCreateWhenNothingMatches`, `TestProjectListCreateAfterPartialMatches`, `TestProjectListNoCreateOnExactMatch`, `TestProjectListNoCreateForArchivedName`
+- [x] 3.3 Selection and view: the selection resets on a query change, `Move` clamps, and at most 6 rows show with a scroll window that follows the selection. Verify with `TestProjectListSelectionResetsOnQuery`, `TestProjectListMoveClamps`, `TestProjectListViewScrollsToSelection`
 
 ## 4. Row picker and inline `@`
 

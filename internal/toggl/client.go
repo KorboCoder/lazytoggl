@@ -121,9 +121,10 @@ func (c *Client) Projects(ctx context.Context) ([]Project, error) {
 		return nil, err
 	}
 	var wires []struct {
-		ID    int64  `json:"id"`
-		Name  string `json:"name"`
-		Color string `json:"color"`
+		ID     int64  `json:"id"`
+		Name   string `json:"name"`
+		Color  string `json:"color"`
+		Active bool   `json:"active"`
 	}
 	if err := json.Unmarshal(raw, &wires); err != nil {
 		return nil, fmt.Errorf("toggl: decoding projects: %w", err)
@@ -133,7 +134,7 @@ func (c *Client) Projects(ctx context.Context) ([]Project, error) {
 	// "—" instead of the real name for that history.
 	projects := make([]Project, 0, len(wires))
 	for _, w := range wires {
-		projects = append(projects, Project{ID: w.ID, Name: w.Name, Color: w.Color})
+		projects = append(projects, Project{ID: w.ID, Name: w.Name, Color: w.Color, Active: w.Active})
 	}
 	return projects, nil
 }
