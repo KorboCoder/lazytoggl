@@ -23,8 +23,14 @@ const (
 // means the 30-requests/hour quota is exhausted (see docs/ARCHITECTURE.md).
 var ErrRateLimited = errors.New("toggl: rate limited — try again later")
 
-// ErrInvalidToken is returned on 401/403: the API token is missing or wrong.
+// ErrInvalidToken is returned on 401: the API token is missing or wrong.
 var ErrInvalidToken = errors.New("toggl: invalid API token")
+
+// ErrForbidden is returned on 403. Toggl uses it both for a rejected login
+// and for an action the user may not take (e.g. creating a project in a
+// workspace where only admins may), so only onboarding reads it as a bad
+// token.
+var ErrForbidden = errors.New("toggl: request refused (403)")
 
 // APIError wraps any other non-2xx response.
 type APIError struct {
@@ -114,29 +120,61 @@ func (c *Client) RecentEntries(ctx context.Context) ([]TimeEntry, error) {
 	return entries, nil
 }
 
+type projectWire struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Color  string `json:"color"`
+	Active bool   `json:"active"`
+}
+
+func (w projectWire) toProject() Project {
+	return Project{ID: w.ID, Name: w.Name, Color: w.Color, Active: w.Active}
+}
+
+// projectsPageSize is the page size of GET .../projects (X-Page-Size,
+// confirmed live): a full page means there may be another.
+const projectsPageSize = 151
+
 func (c *Client) Projects(ctx context.Context) ([]Project, error) {
-	path := fmt.Sprintf("/workspaces/%d/projects", c.workspaceID)
-	raw, err := c.do(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return nil, err
-	}
-	var wires []struct {
-		ID     int64  `json:"id"`
-		Name   string `json:"name"`
-		Color  string `json:"color"`
-		Active bool   `json:"active"`
-	}
-	if err := json.Unmarshal(raw, &wires); err != nil {
-		return nil, fmt.Errorf("toggl: decoding projects: %w", err)
-	}
+	base := fmt.Sprintf("/workspaces/%d/projects", c.workspaceID)
 	// Deliberately not filtered by "active": a past entry may reference an
 	// archived project, and dropping it here would make projectLabel show
 	// "—" instead of the real name for that history.
-	projects := make([]Project, 0, len(wires))
-	for _, w := range wires {
-		projects = append(projects, Project{ID: w.ID, Name: w.Name, Color: w.Color, Active: w.Active})
+	var projects []Project
+	for page := 1; ; page++ {
+		path := base
+		if page > 1 {
+			path = fmt.Sprintf("%s?page=%d", base, page)
+		}
+		raw, err := c.do(ctx, http.MethodGet, path, nil)
+		if err != nil {
+			return nil, err
+		}
+		var wires []projectWire
+		if err := json.Unmarshal(raw, &wires); err != nil {
+			return nil, fmt.Errorf("toggl: decoding projects: %w", err)
+		}
+		for _, w := range wires {
+			projects = append(projects, w.toProject())
+		}
+		// Each further page costs a request, so only a full page asks.
+		if len(wires) < projectsPageSize {
+			return projects, nil
+		}
 	}
-	return projects, nil
+}
+
+func (c *Client) CreateProject(ctx context.Context, name string) (Project, error) {
+	path := fmt.Sprintf("/workspaces/%d/projects", c.workspaceID)
+	raw, err := c.do(ctx, http.MethodPost, path, map[string]any{"name": name, "active": true})
+	if err != nil {
+		return Project{}, err
+	}
+	var w projectWire
+	if err := json.Unmarshal(raw, &w); err != nil {
+		return Project{}, fmt.Errorf("toggl: decoding created project: %w", err)
+	}
+	return w.toProject(), nil
 }
 
 func (c *Client) Start(ctx context.Context, req StartRequest) (TimeEntry, error) {
@@ -173,8 +211,12 @@ func (c *Client) Update(ctx context.Context, entry TimeEntry) (TimeEntry, error)
 		"description":  entry.Description,
 		"start":        entry.Start.Format(time.RFC3339),
 	}
+	// Always sent: a PUT that leaves project_id out keeps the old project,
+	// and null is what removes it (confirmed live, docs/ARCHITECTURE.md).
 	if entry.ProjectID != 0 {
 		body["project_id"] = entry.ProjectID
+	} else {
+		body["project_id"] = nil
 	}
 	if entry.Running() {
 		body["duration"] = -1
@@ -204,7 +246,7 @@ func (c *Client) Delete(ctx context.Context, entryID int64) error {
 const maxAttempts = 3
 
 // do sends a request and returns the raw response body on 2xx, or a typed
-// error (ErrRateLimited, ErrInvalidToken, *APIError) otherwise.
+// error (ErrRateLimited, ErrInvalidToken, ErrForbidden, *APIError) otherwise.
 func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte, error) {
 	var payload []byte
 	if body != nil {
@@ -272,8 +314,10 @@ func (c *Client) attempt(ctx context.Context, method, path string, payload []byt
 		return respBody, false, nil
 	case resp.StatusCode == http.StatusPaymentRequired:
 		return nil, false, ErrRateLimited
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+	case resp.StatusCode == http.StatusUnauthorized:
 		return nil, false, ErrInvalidToken
+	case resp.StatusCode == http.StatusForbidden:
+		return nil, false, ErrForbidden
 	case resp.StatusCode == http.StatusRequestTimeout ||
 		resp.StatusCode == http.StatusTooManyRequests ||
 		resp.StatusCode >= http.StatusInternalServerError:
