@@ -50,7 +50,7 @@ add `Old Client` (103, inactive) to the loaded projects.
 
 - [x] 8.1 Update `docs/REQUIREMENTS.md`: feature list (pick, create, and clear a project), the keymap for the start dialog, project row, dropdown, and picker, and remove the "Project / tag / client pickers" backlog item's project part. Add a `docs/PLAN.md` decisions row citing this change. Verify by reading each new key against `proposal.md`'s keybinding table
 - [x] 8.2 Run `go test -race ./...` and verify it passes
-- [ ] 8.3 Run `go run . -mock` and verify by hand: `c`, type `fix @int`, `enter` picks Internal, a second `enter` starts it; `@newclient` offers create, and starting adds a `newclient` project; in the edit dialog, the project row's picker changes the project and the review shows it; `Old Client` never appears in a list
+- [x] 8.3 Run `go run . -mock` and verify by hand: `c`, type `fix @int`, `enter` picks Internal, a second `enter` starts it; `@newclient` offers create, and starting adds a `newclient` project; in the edit dialog, the project row's picker changes the project and the review shows it; `Old Client` never appears in a list
 
 ## Workflow follow-up
 
