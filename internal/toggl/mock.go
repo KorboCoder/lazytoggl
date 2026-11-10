@@ -61,8 +61,11 @@ func NewMock() *Mock {
 		entries: []TimeEntry{
 			{ID: 1, WorkspaceID: 1, ProjectID: 101, Description: "Writing project plan",
 				Start: now.Add(-12 * time.Minute), Duration: -1},
-			fin(2, 0, "Standup", at(0, 9, 30), 15*time.Minute),
-			fin(3, 101, "Code review", at(0, 10, 0), 62*time.Minute),
+			// Today's entries sit just before the running one rather than at
+			// fixed clock times, which would be in the future in the early
+			// morning and so outside the RecentEntries window.
+			fin(2, 0, "Standup", now.Add(-150*time.Minute), 15*time.Minute),
+			fin(3, 101, "Code review", now.Add(-100*time.Minute), 62*time.Minute),
 			fin(4, 101, "API integration spike", at(1, 9, 15), 96*time.Minute),
 			fin(5, 102, "1:1 with manager", at(1, 13, 0), 30*time.Minute),
 			fin(6, 101, "Fix flaky tests", at(1, 14, 0), 110*time.Minute),
@@ -84,7 +87,15 @@ func (m *Mock) RecentEntries(ctx context.Context) ([]TimeEntry, error) {
 	time.Sleep(mockLatency)
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := append([]TimeEntry(nil), m.entries...)
+	// Mirror the real client's start_date/end_date window, keeping the
+	// running entry whatever its start.
+	now := time.Now()
+	var out []TimeEntry
+	for _, e := range m.entries {
+		if e.Running() || InRecentWindow(e.Start, now) {
+			out = append(out, e)
+		}
+	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Start.After(out[j].Start) })
 	return out, nil
 }

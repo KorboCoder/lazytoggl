@@ -128,3 +128,70 @@ func TestRecentEntriesNewestFirst(t *testing.T) {
 		}
 	}
 }
+
+// The mock returns the same window the real client asks for, so a moved
+// entry drops off on refresh under -mock just as it does live.
+func TestMockRecentEntriesFiltersToWindow(t *testing.T) {
+	m := NewMock()
+	now := time.Now()
+	old := now.Add(-RecentEntriesLookback - time.Hour)
+	future := now.Add(2 * time.Hour)
+	m.entries = append(m.entries,
+		TimeEntry{ID: 900, Description: "too old", Start: old, Stop: old.Add(time.Hour), Duration: 3600},
+		TimeEntry{ID: 901, Description: "future", Start: future, Stop: future.Add(time.Hour), Duration: 3600},
+		TimeEntry{ID: 902, Description: "edge of window", Start: now.Add(-RecentEntriesLookback + time.Hour),
+			Stop: now.Add(-RecentEntriesLookback + 2*time.Hour), Duration: 3600},
+	)
+	entries, err := m.RecentEntries(context.Background())
+	if err != nil {
+		t.Fatalf("RecentEntries: %v", err)
+	}
+	got := map[int64]bool{}
+	for _, e := range entries {
+		got[e.ID] = true
+	}
+	if got[900] || got[901] {
+		t.Fatalf("entries outside the window returned: %v", got)
+	}
+	if !got[902] {
+		t.Fatal("entry inside the window missing")
+	}
+	if !got[1] {
+		t.Fatal("running entry missing")
+	}
+}
+
+func TestInRecentWindowBounds(t *testing.T) {
+	now := time.Date(2026, 7, 14, 12, 0, 0, 0, time.UTC)
+	since := RecentEntriesSince(now)
+	for _, c := range []struct {
+		start time.Time
+		want  bool
+	}{
+		{since, true},
+		{now, true},
+		{now.Add(-time.Hour), true},
+		{since.Add(-time.Second), false},
+		{now.Add(time.Second), false},
+	} {
+		if got := InRecentWindow(c.start, now); got != c.want {
+			t.Errorf("InRecentWindow(%s) = %v, want %v", c.start, got, c.want)
+		}
+	}
+}
+
+// The seed must sit inside the window at any time of day: a "today" entry
+// seeded at a fixed clock time starts in the future in the early morning,
+// and the window filter (like the real API) leaves it out.
+func TestMockSeedIsInWindowAtAnyTimeOfDay(t *testing.T) {
+	m := NewMock()
+	now := time.Now()
+	for _, e := range m.entries {
+		if !e.Running() && !InRecentWindow(e.Start, now) {
+			t.Errorf("seed entry %d %q starts %s, outside the window at %s", e.ID, e.Description, e.Start, now)
+		}
+		if !e.Running() && e.Stop.After(now) {
+			t.Errorf("seed entry %d %q stops %s, after now", e.ID, e.Description, e.Stop)
+		}
+	}
+}

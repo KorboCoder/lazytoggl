@@ -19,6 +19,10 @@ func keyMsg(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyCtrlA}
 	case "ctrl+x":
 		return tea.KeyMsg{Type: tea.KeyCtrlX}
+	case "tab":
+		return tea.KeyMsg{Type: tea.KeyTab}
+	case "shift+tab":
+		return tea.KeyMsg{Type: tea.KeyShiftTab}
 	default:
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 	}
@@ -218,5 +222,15 @@ func TestTimeFieldBurstMixesDigitsAndMotions(t *testing.T) {
 	f, _ = f.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("w05")})
 	if f.String() != "14:05" {
 		t.Fatalf("got %q, want 14:05", f.String())
+	}
+}
+
+// SetValue lets a host (the date+time field's carry) replace the value
+// without moving the user's cursor.
+func TestTimeFieldSetValueKeepsCursor(t *testing.T) {
+	f, _ := feedField(NewTimeField(14*60+32, 0, dayMax), "w", "l") // last digit
+	f.SetValue(9*60 + 5)
+	if f.String() != "09:05" || f.Cursor() != 3 {
+		t.Fatalf("got %q cursor %d, want 09:05 cursor 3", f.String(), f.Cursor())
 	}
 }

@@ -44,12 +44,17 @@ type Edit struct {
 	rows  []editRow
 	focus int
 
-	// fieldOpen is set while a time row's HH:MM field is open over the form.
+	// fieldOpen is set while a time row's field is open over the form:
+	// dt (date + HH:MM) for start and stop, field (HH:MM) for duration.
 	fieldOpen bool
+	dtOpen    bool
+	dt        DateTimeField
 	field     TimeField
-	// fieldFrom is the value the field opened with; accepting it unchanged
-	// writes nothing, so the original timestamp (seconds included) survives.
+	// fieldFrom / dtFrom are the values the field opened with; accepting
+	// them unchanged writes nothing, so the original timestamp (seconds
+	// included) survives.
 	fieldFrom int
+	dtFrom    time.Time
 	// reviewing is set while the before/after review is shown.
 	reviewing bool
 }
@@ -130,22 +135,90 @@ func (d *Edit) setFocus(i int) tea.Cmd {
 	return nil
 }
 
-// openField opens the HH:MM field on the focused time row.
+// openField opens the focused time row's field: date + HH:MM for start
+// and stop, HH:MM for duration.
 func (d *Edit) openField() {
+	d.fieldOpen = true
+	d.dtOpen = true
 	switch d.rows[d.focus] {
 	case rowStart:
-		d.field = NewTimeField(minutesOfDay(d.start), 0, dayMinutes-1)
+		d.dt = NewDateTimeField(d.start, d.startLowerBound(), d.lastMinuteToday(), d.resolveStart)
 	case rowStop:
-		d.field = NewTimeField(minutesOfDay(d.stop), 0, dayMinutes-1)
+		d.dt = NewDateTimeField(d.stop, time.Time{}, d.lastMinuteToday(), d.resolveStop)
 	case rowDuration:
+		d.dtOpen = false
 		d.field = NewTimeField(min(d.durationMinutes(), dayMinutes-1), 1, dayMinutes-1)
+		d.fieldFrom = d.field.Value()
+		return
 	}
-	d.fieldFrom = d.field.Value()
-	d.fieldOpen = true
+	d.dtFrom = d.dt.Value()
+}
+
+// maxWrap is how long an entry may become when a typed time is placed on
+// the neighbouring day. Real overnight entries are short; a typo that would
+// wrap into a ~23h entry stays on its day instead.
+const maxWrap = 12 * time.Hour
+
+// resolveStop places a typed stop time on its first occurrence after start
+// when that makes an entry of at most maxWrap, crossing midnight if needed;
+// otherwise the time stays on the field's date.
+func (d *Edit) resolveStop(day time.Time, minutes int) time.Time {
+	c := atClock(d.start, minutes)
+	if !c.After(d.start) {
+		c = c.AddDate(0, 0, 1)
+	}
+	if c.Sub(d.start) <= maxWrap && !c.After(d.lastMinuteToday()) {
+		return c
+	}
+	return atClock(day, minutes)
+}
+
+// resolveStart places a typed start time on its last occurrence before the
+// other end (stop, or now for a running entry) when that is within maxWrap.
+func (d *Edit) resolveStart(day time.Time, minutes int) time.Time {
+	other := d.stop
+	if d.orig.Running() {
+		other = d.now
+	}
+	c := atClock(other, minutes)
+	if !c.Before(other) {
+		c = c.AddDate(0, 0, -1)
+	}
+	lo := d.startLowerBound()
+	if other.Sub(c) <= maxWrap && (lo.IsZero() || !c.Before(lo)) {
+		return c
+	}
+	return atClock(day, minutes)
+}
+
+// lastMinuteToday bounds every date: nothing is set past today.
+func (d *Edit) lastMinuteToday() time.Time { return atClock(d.now, dayMinutes-1) }
+
+// startLowerBound keeps a running entry's start within a week, so the next
+// refresh (which fetches the last 8 days) still finds it. A finished
+// entry's start has no lower bound.
+func (d *Edit) startLowerBound() time.Time {
+	if !d.orig.Running() {
+		return time.Time{}
+	}
+	return midnight(d.now).AddDate(0, 0, -7)
 }
 
 func (d *Edit) updateField(k tea.KeyMsg) {
 	var res FieldResult
+	if d.dtOpen {
+		d.dt, res = d.dt.Update(k)
+		switch res {
+		case FieldAccepted:
+			if v := d.dt.Value(); !v.Equal(d.dtFrom) {
+				d.applyTime(d.rows[d.focus], v)
+			}
+			d.fieldOpen = false
+		case FieldReverted:
+			d.fieldOpen = false
+		}
+		return
+	}
 	d.field, res = d.field.Update(k)
 	switch res {
 	case FieldAccepted:
@@ -158,13 +231,23 @@ func (d *Edit) updateField(k tea.KeyMsg) {
 	}
 }
 
-// applyField writes an accepted HH:MM value into the draft. Start keeps
-// stop, stop and duration keep start, and an entry is never shorter than a
-// minute: a time that would cross the other end lands a minute from it.
-func (d *Edit) applyField(r editRow, minutes int) {
+// applyTime writes an accepted start or stop into the draft. Start keeps
+// stop, stop keeps start, and an entry is never shorter than a minute: a
+// time that would cross the other end lands a minute from it. Stepping
+// start's date moves the whole entry; a time moved only by date steps
+// keeps its seconds.
+func (d *Edit) applyTime(r editRow, v time.Time) {
+	days := d.dt.Stepped()
 	switch r {
 	case rowStart:
-		d.start = restoreIfSameMinute(atClock(d.start, minutes), d.orig.Start)
+		if days != 0 && !d.orig.Running() {
+			d.stop = d.stop.AddDate(0, 0, days)
+		}
+		if d.dt.Clocked() {
+			d.start = restoreIfSameMinute(v, d.orig.Start)
+		} else {
+			d.start = d.start.AddDate(0, 0, days)
+		}
 		if d.orig.Running() {
 			latest := d.now.Truncate(time.Minute).Add(-time.Minute)
 			if d.start.After(latest) && !d.start.Equal(d.orig.Start) {
@@ -174,10 +257,21 @@ func (d *Edit) applyField(r editRow, minutes int) {
 			d.start = d.stop.Add(-time.Minute)
 		}
 	case rowStop:
-		d.stop = restoreIfSameMinute(atClock(d.stop, minutes), d.orig.Stop)
+		if d.dt.Clocked() {
+			d.stop = restoreIfSameMinute(v, d.orig.Stop)
+		} else {
+			d.stop = d.stop.AddDate(0, 0, days)
+		}
 		if d.stop.Sub(d.start) < time.Minute {
 			d.stop = d.start.Add(time.Minute)
 		}
+	}
+}
+
+// applyField writes an accepted duration into the draft: start stays and
+// stop becomes start plus the duration.
+func (d *Edit) applyField(r editRow, minutes int) {
+	switch r {
 	case rowDuration:
 		stop := d.start.Add(time.Duration(max(1, minutes)) * time.Minute)
 		d.stop = restoreIfSameMinute(stop, d.orig.Stop)
@@ -199,6 +293,13 @@ func restoreIfSameMinute(t, orig time.Time) time.Time {
 // atClock is t's date at the given minutes since midnight, zero seconds.
 func atClock(t time.Time, minutes int) time.Time {
 	return time.Date(t.Year(), t.Month(), t.Day(), minutes/60, minutes%60, 0, 0, time.Local)
+}
+
+func (d *Edit) fieldErr() string {
+	if d.dtOpen {
+		return d.dt.Err()
+	}
+	return d.field.Err()
 }
 
 func (d *Edit) updateReview(k tea.KeyMsg) tea.Cmd {
@@ -227,19 +328,31 @@ func (d *Edit) changes() []change {
 		out = append(out, change{"description", o.Description, desc})
 	}
 	if !d.start.Equal(o.Start) {
-		out = append(out, change{"start", clock(minutesOfDay(o.Start.Local())), clock(minutesOfDay(d.start))})
+		before, after := whenPair(o.Start.Local(), d.start)
+		out = append(out, change{"start", before, after})
 	}
 	if o.Running() {
 		return out
 	}
 	if !d.stop.Equal(o.Stop) {
-		out = append(out, change{"stop", clock(minutesOfDay(o.Stop.Local())), clock(minutesOfDay(d.stop))})
+		before, after := whenPair(o.Stop.Local(), d.stop)
+		out = append(out, change{"stop", before, after})
 	}
 	before := int(o.Stop.Sub(o.Start) / time.Minute)
 	if after := d.durationMinutes(); after != before {
 		out = append(out, change{"duration", clock(before), clock(after)})
 	}
 	return out
+}
+
+// whenPair formats a changed time for the review: HH:MM on both sides, or
+// date and time on both sides when the date changed.
+func whenPair(before, after time.Time) (string, string) {
+	if midnight(before).Equal(midnight(after)) {
+		return clock(minutesOfDay(before)), clock(minutesOfDay(after))
+	}
+	return before.Format(dateLayout) + " " + clock(minutesOfDay(before)),
+		after.Format(dateLayout) + " " + clock(minutesOfDay(after))
 }
 
 func (d *Edit) reviewView() string {
@@ -252,6 +365,10 @@ func (d *Edit) reviewView() string {
 			continue
 		}
 		lines = append(lines, label+c.before+" -> "+c.after)
+		if c.label == "start" && !toggl.InRecentWindow(d.start, d.now) {
+			// The next refresh won't fetch it; it's still saved in Toggl.
+			lines = append(lines, strings.Repeat(" ", 12)+theme.MutedStyle.Render("(outside list)"))
+		}
 	}
 	lines = append(lines, "", theme.MutedStyle.Render("y/enter save · esc back · n discard"))
 	return box("Save changes?", lines, boxWidth)
@@ -333,12 +450,23 @@ func (d *Edit) View() string {
 	}
 	lines = append(lines, "")
 	if d.fieldOpen {
-		if err := d.field.Err(); err != "" {
+		if err := d.fieldErr(); err != "" {
 			lines = append(lines, theme.ErrStyle.Render(err))
 		}
-		lines = append(lines,
-			theme.MutedStyle.Render("0-9 type · h l ^ $ w b move · ctrl+a/x +/-1"),
-			theme.MutedStyle.Render("enter ok · esc revert"))
+		switch {
+		case d.dtOpen && d.dt.DateActive():
+			lines = append(lines,
+				theme.MutedStyle.Render("ctrl+a/x +/-1 day"),
+				theme.MutedStyle.Render("tab time · enter ok · esc revert"))
+		case d.dtOpen:
+			lines = append(lines,
+				theme.MutedStyle.Render("0-9 type · h l ^ $ w b move · ctrl+a/x +/-1"),
+				theme.MutedStyle.Render("tab date/time · enter ok · esc revert"))
+		default:
+			lines = append(lines,
+				theme.MutedStyle.Render("0-9 type · h l ^ $ w b move · ctrl+a/x +/-1"),
+				theme.MutedStyle.Render("enter ok · esc revert"))
+		}
 	} else {
 		lines = append(lines, theme.MutedStyle.Render("tab next · enter edit time · esc done"))
 	}
@@ -350,6 +478,9 @@ func (d *Edit) View() string {
 	// with the row it edits (+1 for the dialog's top border, -1 for its own).
 	title := rowLabels[d.rows[d.focus]]
 	content := d.field.View()
+	if d.dtOpen {
+		content = d.dt.View()
+	}
 	w := lipgloss.Width(title) + 6
 	for _, l := range strings.Split(content, "\n") {
 		w = max(w, lipgloss.Width(l)+4)

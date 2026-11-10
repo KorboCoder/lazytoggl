@@ -55,6 +55,13 @@ func (f *TimeField) step(sign int) {
 	f.set(max(f.min, min(f.max, f.Value()+sign*unit)))
 }
 
+// SetValue replaces the value (minutes since midnight), keeping the cursor
+// and clearing any range error.
+func (f *TimeField) SetValue(minutes int) {
+	f.set(minutes)
+	f.err = ""
+}
+
 func (f *TimeField) set(minutes int) {
 	h, m := minutes/60, minutes%60
 	f.digits = [4]int{h / 10, h % 10, m / 10, m % 10}

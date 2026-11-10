@@ -80,6 +80,16 @@ func (m *Entries) Move(rows []Row, delta int) {
 	}
 }
 
+// SelectID moves the cursor onto the row holding entry id, if it's listed.
+func (m *Entries) SelectID(rows []Row, id int64) {
+	for i, r := range rows {
+		if r.Kind == RowEntry && r.Entry.ID == id {
+			m.Cursor = i
+			return
+		}
+	}
+}
+
 // Clamp snaps the cursor onto the nearest selectable row after the row set
 // changes (loads, deletes, refreshes).
 func (m *Entries) Clamp(rows []Row) {

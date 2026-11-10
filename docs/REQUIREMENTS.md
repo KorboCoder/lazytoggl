@@ -14,9 +14,9 @@
    per-day totals.
 6. **Resume** — select a past entry and start a new entry pre-filled with its
    description/project.
-7. **Edit** an entry's description, start/stop times, and duration (start/stop/duration
-   are edited as `HH:MM`; dates are not editable yet), reviewing a before → after
-   summary before saving; **delete** with a confirmation dialog.
+7. **Edit** an entry's description, start/stop date and time, and duration (times are
+   edited as `HH:MM`, with the date beside them in the same field), reviewing a
+   before → after summary before saving; **delete** with a confirmation dialog.
 8. **Manual refresh only** (`r`). No background polling. Every mutation updates local
    state from the API response, so normal usage costs 1 request per action plus 1 fetch
    at startup. This is a hard requirement from the Free-plan rate limit
@@ -58,20 +58,31 @@ toggles, `enter` acts on the selection.
 |---|---|---|
 | `tab` / `shift+tab`, `down` / `up` | form | Move between rows (wraps) |
 | `enter` | description row | Move to the next row |
-| `enter` | start / stop / duration row | Open that row's `HH:MM` time field |
+| `enter` | start / stop / duration row | Open that row's field: date + `HH:MM` for start / stop, `HH:MM` for duration |
 | `esc` | form | Close: no changes → closes with no API call; otherwise opens the review |
 | `0`–`9` | time field | Overwrite the digit under the cursor and advance (skips the `:`) |
 | `h` / `l`, `^` / `$`, `w` / `b` | time field | Move one digit; first / last digit; minutes / hours |
-| `ctrl+a` / `ctrl+x` | time field | +1 / −1 on the hours or minutes under the cursor (minutes carry; start/stop stay within the day, duration within 00:01–23:59) |
+| `tab` / `shift+tab` | start / stop field | Switch between the date and the time (opens on the time; no effect in the duration field) |
+| `ctrl+a` / `ctrl+x` | time field | +1 / −1 on the hours or minutes under the cursor (minutes carry into hours; on start / stop, hours carry across midnight into the date; duration stays within 00:01–23:59) |
+| `ctrl+a` / `ctrl+x` | date (start / stop field) | +1 / −1 day (digits and motions do nothing here) |
 | `enter` / `esc` | time field | Accept (hours 00–23, minutes 00–59) / revert the field |
 | `y` / `enter` | review | Save (one API request) |
 | `esc` | review | Back to the form, edits intact |
 | `n` | review | Discard all edits and close |
 
-Editing start keeps stop fixed; editing stop or duration keeps start fixed. An entry is
-never shorter than 1 minute (Toggl rejects zero-length entries): a time that would cross
-the other end lands 1 minute from it. A running entry's stop and duration can't be
-edited, and its start can be at most 1 minute before now.
+Editing start keeps stop fixed; editing stop or duration keeps start fixed. Stepping
+**start's date** moves the whole entry (stop moves by the same days); stepping stop's
+date moves only stop. A typed time crosses midnight when that makes sense: a stop lands
+on its first occurrence after start, a start on its last occurrence before stop (or
+now, for a running entry), if the entry is then 12 hours or shorter; otherwise it stays
+on the field's date. The field's date updates live as you type, and a date you changed
+by hand is kept. An entry is never shorter than 1 minute (Toggl rejects zero-length
+entries): a time that would cross the other end lands 1 minute from it. No date goes past
+today. A running entry's stop and duration can't be edited, its start can be at most 1
+minute before now, and its start date no earlier than 7 days ago (so a refresh still
+finds it). A finished entry can move outside the list's window (before the last 8 days, or to a
+start later than now): the review marks it `(outside list)` and the status line warns
+that it drops off on the next refresh.
 
 ## UI sketch (draft — refined during the Phase 1 prototype)
 
