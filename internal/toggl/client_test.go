@@ -560,3 +560,33 @@ func TestProjectsStopsAfterShortPage(t *testing.T) {
 		t.Fatalf("first request query = %q, want none (same request as before paging)", q)
 	}
 }
+
+// `?page=` was never confirmed live: a server that ignores it would repeat
+// page 1 forever and spend the whole hourly quota. A page with no new
+// projects ends the loop, and a hard cap bounds it regardless.
+func TestProjectsStopsWhenPagesRepeat(t *testing.T) {
+	c, requests := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, 200, projectsPage(151, 1)) // ignores page
+	})
+	projects, err := c.Projects(context.Background())
+	if err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	if len(*requests) != 2 || len(projects) != 151 {
+		t.Fatalf("%d requests, %d projects; want 2 requests and the 151 unique projects", len(*requests), len(projects))
+	}
+}
+
+func TestProjectsPagingIsCapped(t *testing.T) {
+	c, requests := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		page := 1
+		fmt.Sscan(r.URL.Query().Get("page"), &page)
+		writeJSON(w, 200, projectsPage(151, (page-1)*151+1)) // always full, always new
+	})
+	if _, err := c.Projects(context.Background()); err != nil {
+		t.Fatalf("Projects: %v", err)
+	}
+	if len(*requests) != maxProjectPages {
+		t.Fatalf("%d requests, want the cap of %d", len(*requests), maxProjectPages)
+	}
+}

@@ -123,6 +123,21 @@ When an entry is saved with a `(new)` project, the system SHALL first create the
 - **WHEN** creating the project fails
 - **THEN** the entry is not saved and the error is shown
 
+### Requirement: Projects not yet loaded
+Until the session's projects have loaded, the project list SHALL say so and SHALL NOT offer to create a project, since an existing one could not be told apart. A refresh SHALL fetch projects as well as entries while they have never loaded, and only then.
+
+#### Scenario: Startup failed
+- **WHEN** the startup load failed and the user types `@acme` in the start dialog
+- **THEN** the dropdown says projects are not loaded and offers no create option
+
+#### Scenario: Refresh after a failed startup
+- **WHEN** the startup load failed and the user presses `r`
+- **THEN** projects are fetched with the entries, and `@acm` then lists `ACME`
+
+#### Scenario: Later refreshes
+- **WHEN** projects have loaded and the user presses `r`
+- **THEN** only entries are fetched
+
 ### Requirement: Clearing a project
 Picking "No project" SHALL set the project row to `(none)`, and saving SHALL leave the entry with no project in Toggl.
 

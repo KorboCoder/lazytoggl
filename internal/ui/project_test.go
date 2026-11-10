@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/KorboCoder/lazytoggl/internal/toggl"
 )
 
@@ -262,8 +264,9 @@ func TestCreatedProjectReusedAfterFailedSave(t *testing.T) {
 	mock := toggl.NewMock()
 	d := newDriverWith(t, failingStartService{mock}, mock)
 	d.keys("c", "x", " ", "@", "newclient", "enter", "enter")
-	if mock.Calls("CreateProject") != 1 || d.m.runningEntry() == nil && d.m.notice == "" {
-		t.Fatalf("CreateProject %d, notice %q: want one create and a failed start", mock.Calls("CreateProject"), d.m.notice)
+	if mock.Calls("CreateProject") != 1 || d.m.notice == "" || mock.Calls("Start") != 0 {
+		t.Fatalf("CreateProject %d, Start %d, notice %q: want one create and a failed start",
+			mock.Calls("CreateProject"), mock.Calls("Start"), d.m.notice)
 	}
 	d.keys("c", "@", "newclient")
 	d.dialogContains("newclient")
@@ -284,3 +287,73 @@ func TestProjectPopupsKeepHelpVisible(t *testing.T) {
 	e.keys("esc", "shift+tab", "enter")
 	e.dialogContains("↑/↓ choose · enter pick · esc close")
 }
+
+// newUnloadedDriver is the app after its startup load failed (e.g. launched
+// while rate-limited): no entries, no projects yet.
+func newUnloadedDriver(t *testing.T) *driver {
+	t.Helper()
+	mock := toggl.NewMock()
+	d := &driver{t: t, m: New(mock), mock: mock}
+	mm, _ := d.m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	d.m = mm.(Model)
+	mm, _ = d.m.Update(tickMsg(fixedNow))
+	d.m = mm.(Model)
+	d.feed(errMsg{toggl.ErrRateLimited})
+	return d
+}
+
+// Refresh fetches projects while they have never loaded, so @ACME matches
+// instead of offering to create a duplicate.
+func TestRefreshLoadsProjectsWhenNeverLoaded(t *testing.T) {
+	d := newUnloadedDriver(t)
+	d.key("r")
+	if n := d.mock.Calls("Projects"); n != 1 {
+		t.Fatalf("Projects calls on refresh = %d, want 1 while never loaded", n)
+	}
+	d.keys("c", "@", "acm")
+	d.dialogContains("ACME")
+	d.key("r") // dialog open: r types; close and refresh again
+	d.keys("esc", "esc", "esc", "r")
+	if n := d.mock.Calls("Projects"); n != 1 {
+		t.Fatalf("Projects calls after a second refresh = %d, want still 1", n)
+	}
+}
+
+// Before projects load, the list says so and offers no create option.
+func TestUnloadedProjectsOfferNoCreate(t *testing.T) {
+	d := newUnloadedDriver(t)
+	d.keys("c", "@", "acme")
+	d.dialogContains("projects not loaded")
+	d.dialogLacks("+ Create")
+}
+
+// A load that lands after a project was created keeps it.
+func TestLateLoadKeepsCreatedProject(t *testing.T) {
+	d := newDriver(t)
+	d.keys("c", "@", "newclient", "enter", "enter")
+	run := d.m.runningEntry()
+	d.feed(dataLoadedMsg{entries: fixtureEntries(), projects: []toggl.Project{
+		{ID: 101, Name: "ACME", Active: true}, {ID: 102, Name: "Internal", Active: true},
+	}})
+	if _, ok := d.m.projects[run.ProjectID]; !ok {
+		t.Fatalf("created project %d dropped by a later load", run.ProjectID)
+	}
+}
+
+// While the entry starts after its project was created, the status says
+// "starting…", not "saving…".
+func TestStartWithNewProjectStatusSaysStarting(t *testing.T) {
+	d := newDriver(t)
+	d.keys("c", "@", "newclient", "enter")
+	mm, cmd := d.m.Update(keyEnter()) // the dialog submits
+	d.m = mm.(Model)
+	mm, cmd = d.m.Update(cmd()) // StartSubmitMsg -> the create command
+	d.m = mm.(Model)
+	mm, _ = d.m.Update(cmd()) // projectCreatedMsg; next is not run
+	d.m = mm.(Model)
+	if d.m.status != "starting…" {
+		t.Fatalf("status = %q, want starting…", d.m.status)
+	}
+}
+
+func keyEnter() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyEnter} }

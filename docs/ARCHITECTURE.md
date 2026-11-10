@@ -78,7 +78,7 @@ docs and community API reference during Phase 2 implementation (`internal/toggl/
 |---|---|
 | Validate token, default workspace | `GET /me` → `default_workspace_id` (falls back to legacy `default_wid` if absent) |
 | Recent entries | `GET /me/time_entries?start_date=...&end_date=...` (the window is `[toggl.RecentEntriesSince(now), now]`, i.e. the last 192h set by the exported `toggl.RecentEntriesLookback`; `toggl.InRecentWindow(start, now)` tests membership. The mock filters its entries with it, plus the running entry, so `-mock` behaves like the API on refresh, and the UI uses it to warn when an edit moves an entry's start out of the window, including past now. That the API leaves out entries starting after `end_date` is assumed from the parameter, not confirmed live). Confirmed live: the API 400s ("start_date and end_date are both required") if either is sent without the other |
-| Projects (for name/color lookup and the picker) | `GET /workspaces/{workspace_id}/projects` — **not** filtered by `active`; a past entry can reference an archived project, and filtering it out would break its display. The picker hides projects whose `active` is false. Paged at 151: the client asks for `?page=2…` only while a page comes back full |
+| Projects (for name/color lookup and the picker) | `GET /workspaces/{workspace_id}/projects` — **not** filtered by `active`; a past entry can reference an archived project, and filtering it out would break its display. The picker hides projects whose `active` is false. Paged at 151: the client asks for `?page=2…` only while a page comes back full of projects it hasn't seen, and at most 5 pages per call |
 | Create project | `POST /workspaces/{workspace_id}/projects` with `{"name", "active": true}`; only when an entry is saved with a `(new)` project, right before the entry's own request. A taken name is a `400` |
 | Start | `POST /workspaces/{workspace_id}/time_entries` with `description`, `start` (RFC3339), `duration: -1`, `created_with: "lazytoggl"`, optional `project_id` |
 | Stop | `PATCH /workspaces/{workspace_id}/time_entries/{id}/stop` (no body) |
@@ -106,8 +106,8 @@ either shape works.
 - **Quota headers:** every response carries `X-Toggl-Quota-Remaining` and
   `X-Toggl-Quota-Resets-In` (seconds).
 - **Projects are paged:** `GET /workspaces/{wid}/projects` returns a bare array with
-  `X-Page: 1` and `X-Page-Size: 151`. A workspace with more than 151 projects needs
-  `?page=2…`. Each project carries `active`, `color`, `is_private`, `client_id`,
+  `X-Page: 1` and `X-Page-Size: 151`. A workspace with 151 or more projects needs
+  further pages; the client asks for them with `?page=2…`. Each project carries `active`, `color`, `is_private`, `client_id`,
   `client_name`, and more.
 - **Creating a project:** `POST /workspaces/{wid}/projects` with only
   `{"name", "active": true}` succeeds (`200`). The response is the project, with a
@@ -119,7 +119,9 @@ either shape works.
   `stop`, `duration`) removes the project; the response has `project_id: null`.
 - **Deleting:** `DELETE` on a time entry or a project returns `200`.
 - **Not checked:** whether `GET .../projects` without parameters includes archived
-  projects. This workspace had none.
+  projects (this workspace had none), and that `?page=N` is the paging parameter
+  (this workspace has 3 projects). The client stops as soon as a page brings no new
+  projects, so a server that ignored `page` costs one extra request, not the quota.
 
 ## Rate limits
 
@@ -144,9 +146,10 @@ Design consequences (these are architectural constraints, not optimizations):
    launches skip `/me` entirely.
 4. **Projects are fetched once per session** (at startup). A manual refresh (`r`)
    refetches entries only and reuses the session's project map — so startup costs 2
-   requests and each refresh costs 1. (New projects created mid-session on the web app
-   appear after a restart. Workspaces with more than 151 projects pay one request per
-   extra page at startup.)
+   requests and each refresh costs 1 (2 only while projects have never loaded, e.g.
+   after a startup that failed, until they do). (New projects created mid-session on the web app
+   appear after a restart. Workspaces with 151 or more projects pay one request per
+   extra page at startup, at most 4 more.)
 5. On HTTP 402: never retried automatically (retrying an exhausted hourly quota just
    burns more of it), surfaced prominently via the error notice (below).
 

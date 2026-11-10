@@ -34,6 +34,7 @@ type ProjectList struct {
 	active     []toggl.Project // active projects, A-Z ignoring case
 	names      map[string]bool // lower-cased names of all projects, archived too
 	hasCurrent bool            // the entry has a project: offer "No project"
+	loaded     bool            // projects are known; without them, create is unsafe
 	query      string
 	options    []Option
 	sel        int
@@ -41,17 +42,27 @@ type ProjectList struct {
 }
 
 // NewProjectList lists projects for an entry; hasCurrent offers "No project"
-// on an empty search.
+// on an empty search. A nil projects means they haven't loaded: nothing is
+// offered for creation, since an existing project could not be told apart.
 func NewProjectList(projects []toggl.Project, hasCurrent bool) ProjectList {
-	l := ProjectList{names: map[string]bool{}, hasCurrent: hasCurrent}
+	l := ProjectList{names: map[string]bool{}, hasCurrent: hasCurrent, loaded: projects != nil}
 	for _, p := range projects {
 		l.names[normName(p.Name)] = true
 		if p.Active {
 			l.active = append(l.active, p)
 		}
 	}
-	sort.SliceStable(l.active, func(i, j int) bool {
-		return strings.ToLower(l.active[i].Name) < strings.ToLower(l.active[j].Name)
+	// A-Z ignoring case; ties broken by name, then ID, so the order never
+	// depends on the order projects came in (a map, in the app).
+	sort.Slice(l.active, func(i, j int) bool {
+		a, b := l.active[i], l.active[j]
+		if la, lb := strings.ToLower(a.Name), strings.ToLower(b.Name); la != lb {
+			return la < lb
+		}
+		if a.Name != b.Name {
+			return a.Name < b.Name
+		}
+		return a.ID < b.ID
 	})
 	l.rebuild()
 	return l
@@ -83,7 +94,7 @@ func (l *ProjectList) rebuild() {
 			l.options = append(l.options, Option{Kind: OptionProject, Project: p})
 		}
 	}
-	if name := strings.TrimSpace(l.query); name != "" && !l.names[normName(name)] {
+	if name := strings.TrimSpace(l.query); l.loaded && name != "" && !l.names[normName(name)] {
 		l.options = append(l.options, Option{Kind: OptionCreate, Name: name})
 	}
 }
@@ -104,8 +115,8 @@ func (l *ProjectList) Move(by int) {
 	}
 }
 
-// Selected is the highlighted option, or the zero Option when the list is
-// empty (only possible for a search matching an archived name exactly).
+// Selected is the highlighted option, or an Option of no valid Kind when
+// the list is empty (an exact archived name, or projects not loaded).
 func (l ProjectList) Selected() Option {
 	if len(l.options) == 0 {
 		return Option{Kind: -1}
@@ -130,7 +141,14 @@ func optionLabel(o Option) string {
 // the selection.
 func (l ProjectList) View(width int) string {
 	if len(l.options) == 0 {
-		return theme.MutedStyle.Render(theme.Truncate("no matching project", width))
+		msg := "no matching project"
+		switch {
+		case !l.loaded:
+			msg = "projects not loaded — press r"
+		case l.names[normName(l.query)]:
+			msg = "archived project — not selectable"
+		}
+		return theme.MutedStyle.Render(theme.Truncate(msg, width))
 	}
 	end := min(len(l.options), l.offset+listRows)
 	lines := make([]string, 0, end-l.offset)

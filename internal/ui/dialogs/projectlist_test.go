@@ -139,3 +139,22 @@ func TestProjectListViewScrollsToSelection(t *testing.T) {
 		t.Fatalf("view = %q, want a marker on the selection", v)
 	}
 }
+
+// An exact archived name explains why nothing can be picked.
+func TestProjectListArchivedNameExplains(t *testing.T) {
+	l := NewProjectList(listProjects, false)
+	l.SetQuery("old client")
+	if v := l.View(40); !strings.Contains(v, "archived") {
+		t.Fatalf("view = %q, want it to say the project is archived", v)
+	}
+}
+
+// Names equal ignoring case sort the same way every time, whatever order
+// the session's map hands them over in.
+func TestProjectListOrderIsDeterministic(t *testing.T) {
+	a := toggl.Project{ID: 7, Name: "acme", Active: true}
+	b := toggl.Project{ID: 3, Name: "ACME", Active: true}
+	for _, in := range [][]toggl.Project{{a, b}, {b, a}} {
+		wantLabels(t, NewProjectList(in, false), "ACME", "acme")
+	}
+}
