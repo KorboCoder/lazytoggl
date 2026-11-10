@@ -23,9 +23,9 @@ on ACME since 11:50, ID2 is a finished "Standup" with no project today, and ID3 
 
 ## 4. App wiring
 
-- [ ] 4.1 Add a `keyMap.Log` binding on `m`, shown in the help bar, that opens `NewLog` from the list and from the timer panel. Verify with `TestLogKeyOpensDialogFromList` and `TestLogKeyOpensDialogFromTimer`
-- [ ] 4.2 Handle `LogSubmitMsg`: `logCmd` → `entryLoggedMsg` → `replaceEntry`, `SelectID`, and an `entry logged` status; for a `(new)` project, `createProjectCmd` with a `logging…` status first. Verify with `TestLogCreatesFinishedEntry` (mock `Log` 1 call; entry listed under today; cursor on it), `TestLogKeepsTimerRunning` (ID1 still running locally and in the mock), `TestLogWithNewProjectCreatesThenLogs` (`CreateProject` 1, `Log` 1)
-- [ ] 4.3 Generalise `savedStatus` with a verb, and warn when a logged entry's start is outside the window. Verify with `TestLogOutsideWindowShowsStatus` (logged on Sun 05 Jul: outside the list) and `TestLogAfterNowShowsStatus`; the edit status tests still pass
+- [x] 4.1 Add a `keyMap.Log` binding on `m`, shown in the help bar, that opens `NewLog` from the list and from the timer panel. Verify with `TestLogKeyOpensDialogFromList` and `TestLogKeyOpensDialogFromTimer`
+- [x] 4.2 Handle `LogSubmitMsg`: `logCmd` → `entryLoggedMsg` → `replaceEntry`, `SelectID`, and an `entry logged` status; for a `(new)` project, `createProjectCmd` with a `logging…` status first. Verify with `TestLogCreatesFinishedEntry` (mock `Log` 1 call; entry listed under today; cursor on it), `TestLogKeepsTimerRunning` (ID1 still running locally and in the mock), `TestLogWithNewProjectCreatesThenLogs` (`CreateProject` 1, `Log` 1)
+- [x] 4.3 Generalise `savedStatus` with a verb, and warn when a logged entry's start is outside the window. Verify with `TestLogOutsideWindowShowsStatus` (logged on Sun 05 Jul: outside the list) and `TestLogAfterNowShowsStatus`; the edit status tests still pass
 
 ## 5. Docs and integration
 

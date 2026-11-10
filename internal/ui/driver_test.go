@@ -104,7 +104,7 @@ func (d *driver) feed(msg tea.Msg) {
 	switch msg.(type) {
 	case dataLoadedMsg, entryStartedMsg, entryStoppedMsg, entryPausedMsg, entryUpdatedMsg,
 		entryDeletedMsg, errMsg, projectCreatedMsg,
-		dialogs.CloseMsg, dialogs.StartSubmitMsg, dialogs.EditSubmitMsg,
+		dialogs.CloseMsg, dialogs.StartSubmitMsg, dialogs.EditSubmitMsg, dialogs.LogSubmitMsg, entryLoggedMsg,
 		dialogs.DeleteConfirmMsg:
 		mm, cmd := d.m.Update(msg)
 		d.m = mm.(Model)
