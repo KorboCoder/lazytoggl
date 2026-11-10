@@ -25,8 +25,12 @@ type StartSubmitMsg struct {
 	NewProject string
 }
 
-// EditSubmitMsg asks the app to persist an edited entry.
-type EditSubmitMsg struct{ Entry toggl.TimeEntry }
+// EditSubmitMsg asks the app to persist an edited entry. A non-empty
+// NewProject is created first and the entry saved on it.
+type EditSubmitMsg struct {
+	Entry      toggl.TimeEntry
+	NewProject string
+}
 
 // DeleteConfirmMsg asks the app to delete an entry.
 type DeleteConfirmMsg struct{ EntryID int64 }

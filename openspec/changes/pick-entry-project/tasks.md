@@ -37,9 +37,9 @@ add `Old Client` (103, inactive) to the loaded projects.
 
 ## 6. Edit dialog
 
-- [ ] 6.1 Add the project row after duration (after start for a running entry), showing the name, `(none)`, or `<name> (new)`; `enter` opens the picker. Verify in `edit_test.go`: `TestEditFormShowsProjectRow`, `TestEditRunningFormShowsProjectRow`, `TestEditEnterOnProjectRowOpensPicker`; extend `TestEditTabCyclesRowsAndWraps` for the new last row; every existing `edit_test.go` case still passes unchanged
-- [ ] 6.2 Wire `atSuggest` into the edit description: while the dropdown is open, `enter` picks instead of moving rows and `esc` closes only the dropdown, with no review. Verify with `TestEditAtPicksProject`, `TestEditAtEnterDoesNotMoveRow`, `TestEditAtEscDoesNotOpenReview`
-- [ ] 6.3 Review and save: a `project  <before> -> <after>` line using `(none)` and `(new)`; picking "No project" saves with no project; saving a `(new)` project creates it first. Verify with `TestEditReviewShowsProjectChange`, `TestEditReviewShowsNewProject`, `TestEditReviewShowsProjectRemoved`, `TestEditClearProjectSaves` (saved `ProjectID` 0), `TestEditSaveWithNewProjectCreatesThenUpdates` (mock calls: `CreateProject` 1, `Update` 1), `TestEditDiscardWithNewProjectSendsNothing`
+- [x] 6.1 Add the project row after duration (after start for a running entry), showing the name, `(none)`, or `<name> (new)`; `enter` opens the picker. Verify in `edit_test.go`: `TestEditFormShowsProjectRow`, `TestEditRunningFormShowsProjectRow`, `TestEditEnterOnProjectRowOpensPicker`; extend `TestEditTabCyclesRowsAndWraps` for the new last row; every existing `edit_test.go` case still passes unchanged
+- [x] 6.2 Wire `atSuggest` into the edit description: while the dropdown is open, `enter` picks instead of moving rows and `esc` closes only the dropdown, with no review. Verify with `TestEditAtPicksProject`, `TestEditAtEnterDoesNotMoveRow`, `TestEditAtEscDoesNotOpenReview`
+- [x] 6.3 Review and save: a `project  <before> -> <after>` line using `(none)` and `(new)`; picking "No project" saves with no project; saving a `(new)` project creates it first. Verify with `TestEditReviewShowsProjectChange`, `TestEditReviewShowsNewProject`, `TestEditReviewShowsProjectRemoved`, `TestEditClearProjectSaves` (saved `ProjectID` 0), `TestEditSaveWithNewProjectCreatesThenUpdates` (mock calls: `CreateProject` 1, `Update` 1), `TestEditDiscardWithNewProjectSendsNothing`
 
 ## 7. Errors and reuse
 

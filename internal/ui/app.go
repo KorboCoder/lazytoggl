@@ -230,6 +230,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dialogs.EditSubmitMsg:
 		m.dialog = nil
+		if msg.NewProject != "" {
+			entry := msg.Entry
+			m.setStatus("creating project…", false)
+			return m, m.createProjectCmd(msg.NewProject, func(id int64) tea.Cmd {
+				entry.ProjectID = id
+				return m.updateCmd(entry)
+			})
+		}
 		m.setStatus("saving…", false)
 		return m, m.updateCmd(msg.Entry)
 
@@ -322,7 +330,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Edit):
 		if e := m.actionTarget(rows); e != nil {
-			m.dialog = dialogs.NewEdit(*e, m.now)
+			m.dialog = dialogs.NewEdit(*e, m.now, m.projectList())
 			return m, textinput.Blink
 		}
 		return m, nil
