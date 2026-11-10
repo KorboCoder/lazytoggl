@@ -94,6 +94,30 @@ documentation alone — different Toggl doc sources show each. `decodeTimeEntryL
 in `client.go` tries the bare array first, then falls back to the envelope, so
 either shape works.
 
+**Confirmed live (2026-11-10, change `pick-entry-project`):**
+
+- **Auth:** HTTP Basic, the API token as the username and the literal `api_token`
+  as the password. A token sent as a Bearer header gets `401`; a wrong Basic login
+  gets `403` with the body `Incorrect username and/or password`. Failed logins did
+  not reduce the quota.
+- **Quota headers:** every response carries `X-Toggl-Quota-Remaining` and
+  `X-Toggl-Quota-Resets-In` (seconds).
+- **Projects are paged:** `GET /workspaces/{wid}/projects` returns a bare array with
+  `X-Page: 1` and `X-Page-Size: 151`. A workspace with more than 151 projects needs
+  `?page=2…`. Each project carries `active`, `color`, `is_private`, `client_id`,
+  `client_name`, and more.
+- **Creating a project:** `POST /workspaces/{wid}/projects` with only
+  `{"name", "active": true}` succeeds (`200`). The response is the project, with a
+  colour Toggl picked (`#0b83d9` here) and `is_private: true` by default.
+- **Duplicate name:** the same `POST` with an existing name is a `400` with the body
+  `"a project with the name '<name>' already exists"`.
+- **Clearing a project:** `PUT /workspaces/{wid}/time_entries/{id}` with
+  `"project_id": null` (and the usual `workspace_id`, `description`, `start`,
+  `stop`, `duration`) removes the project; the response has `project_id: null`.
+- **Deleting:** `DELETE` on a time entry or a project returns `200`.
+- **Not checked:** whether `GET .../projects` without parameters includes archived
+  projects. This workspace had none.
+
 ## Rate limits
 
 Per https://support.toggl.com/en-us/article/api-webhook-limits-85auc8/ — and Daniel is on

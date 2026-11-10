@@ -174,6 +174,19 @@ These cost about 2–3 requests, and only with the user's OK:
 If 1 fails, the fallback is to try `0`. If the list is paged, the client follows the
 pages at startup, costing one extra request per page, and `ARCHITECTURE.md` says so.
 
+**Results (confirmed live, recorded in `docs/ARCHITECTURE.md`):**
+1. Yes: `"project_id": null` clears the project.
+2. Yes: `name` + `active` is enough. Toggl picks the colour, and the new project is
+   private (`is_private: true`); lazytoggl keeps that default.
+3. Paged: `X-Page-Size: 151`. The client asks for the next page only while a page
+   comes back full, so startup stays at 2 requests below 152 projects.
+4. A duplicate is a `400` with the body
+   `"a project with the name '<name>' already exists"`, shown like any API error.
+
+Still unknown: whether the projects list includes archived projects (the test
+workspace had none). The design doesn't depend on it, since a duplicate of a
+missing archived name fails cleanly with the `400` above.
+
 ### API request cost
 
 | | Requests |
