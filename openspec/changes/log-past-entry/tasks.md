@@ -33,6 +33,12 @@ on ACME since 11:50, ID2 is a finished "Standup" with no project today, and ID3 
 - [x] 5.2 Run `go test -race ./...` and verify it passes
 - [x] 5.3 Run `go run . -mock` and verify by hand: `m` shows the last 30 minutes; typing `standup @int` and pressing `enter` twice logs it on Internal while the running timer keeps ticking; `esc` after typing asks before discarding; an untouched `m` then `esc` closes at once
 
+## 6. Review follow-ups
+
+- [x] 6.1 Discard prompt keys: `d` discards and `esc` goes back, while `y` and `n` do nothing, since `y` saves in the edit review. Verified by `TestLogEscAfterTypingAsksThenDiscards` (`y`/`n` keep the prompt; `d` discards) and `TestLogDiscardPromptBackKeepsForm`
+- [x] 6.2 In log mode, every row's help line says `esc cancel` (it said `esc done` on the time and project rows). Verified by `TestLogHelpSaysCancelOnEveryRow`
+- [x] 6.3 Smaller fixes: `esc` with the `@` dropdown open in log mode (`TestLogEscWithDropdownOnlyClosesIt`); the logged entry's own day header and the mock's running entry are asserted (`TestLogCreatesFinishedEntry`, `TestLogKeepsTimerRunning`); the help-bar label is shortened to `m log`; README and REQUIREMENTS updated for `m` and the log dialog
+
 ## Workflow follow-up
 
 - Run superpowers:requesting-code-review once all tasks are checked.

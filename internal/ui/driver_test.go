@@ -83,7 +83,7 @@ func (d *driver) press(msg tea.KeyMsg) {
 	// can emit app messages (submit/close/confirm) are worth executing.
 	if hadDialog && d.m.dialog != nil {
 		switch msg.String() {
-		case "enter", "esc", "y", "n":
+		case "enter", "esc", "y", "n", "d":
 		default:
 			return
 		}

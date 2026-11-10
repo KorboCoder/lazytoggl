@@ -91,6 +91,22 @@ func NewLog(now time.Time, projects []toggl.Project) *Edit {
 	return d
 }
 
+// formHelp is the form's help line for the focused row. In log mode esc
+// cancels (asking first if anything changed), so it never says "done".
+func (d *Edit) formHelp() string {
+	esc := "esc done"
+	if d.logMode {
+		esc = "esc cancel"
+	}
+	switch {
+	case d.logMode && d.rows[d.focus] == rowDescription:
+		return "enter log · tab next · @ project · " + esc
+	case d.rows[d.focus] == rowProject:
+		return "tab next · enter pick project · " + esc
+	}
+	return "tab next · enter edit time · " + esc
+}
+
 func (d *Edit) title() string {
 	if d.logMode {
 		return "Log entry"
@@ -129,10 +145,12 @@ func (d *Edit) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 	k, isKey := msg.(tea.KeyMsg)
 	if d.confirmingDiscard {
 		if isKey {
+			// d, not y: in the edit review y saves, so y must never
+			// discard here.
 			switch k.String() {
-			case "y":
+			case "d":
 				return d, closeCmd()
-			case "n", "esc":
+			case "esc":
 				d.confirmingDiscard = false
 				return d, d.setFocus(d.focus) // restart the input's blink
 			}
@@ -581,15 +599,11 @@ func (d *Edit) View() string {
 				theme.MutedStyle.Render("enter ok · esc revert"))
 		}
 	} else if d.confirmingDiscard {
-		lines = append(lines, theme.MutedStyle.Render("Discard this entry? y discard · n back"))
+		lines = append(lines, theme.MutedStyle.Render("Discard this entry? d discard · esc back"))
 	} else if d.pickerOpen || d.at.Open() {
 		lines = append(lines, theme.MutedStyle.Render("↑/↓ choose · enter pick · esc close"))
-	} else if d.rows[d.focus] == rowProject {
-		lines = append(lines, theme.MutedStyle.Render("tab next · enter pick project · esc done"))
-	} else if d.logMode && d.rows[d.focus] == rowDescription {
-		lines = append(lines, theme.MutedStyle.Render("enter log · tab next · @ project · esc cancel"))
 	} else {
-		lines = append(lines, theme.MutedStyle.Render("tab next · enter edit time · esc done"))
+		lines = append(lines, theme.MutedStyle.Render(d.formHelp()))
 	}
 	switch {
 	case d.at.Open():

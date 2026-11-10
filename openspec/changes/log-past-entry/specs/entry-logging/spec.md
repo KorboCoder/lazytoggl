@@ -57,19 +57,34 @@ The dialog's rows SHALL behave as the edit dialog's rows do for a finished entry
 - **THEN** the stop field opens and nothing is logged
 
 ### Requirement: Cancelling
-`esc` on the form SHALL close the dialog without any request when nothing differs from the defaults the dialog opened with. Otherwise it SHALL ask `Discard this entry?`, where `y` SHALL discard and close, and `n` or `esc` SHALL return to the form with its values intact. While the `@` dropdown is open, `esc` SHALL only close the dropdown.
+`esc` on the form SHALL close the dialog without any request when nothing differs from the defaults the dialog opened with. Otherwise it SHALL ask `Discard this entry?`, where `d` SHALL discard and close, `esc` SHALL return to the form with its values intact, and every other key SHALL do nothing. While the `@` dropdown is open, `esc` SHALL only close the dropdown.
 
 #### Scenario: Nothing changed
 - **WHEN** the user opens the dialog and presses `esc`
 - **THEN** the dialog closes and no request is made
 
 #### Scenario: Discard after typing
-- **WHEN** the user types `standup` and presses `esc`, then `y`
+- **WHEN** the user types `standup` and presses `esc`, then `d`
 - **THEN** the dialog closes and no request is made
 
+#### Scenario: y does not discard
+- **WHEN** the discard prompt is showing and the user presses `y` or `n`
+- **THEN** the prompt stays and nothing is discarded or logged
+
+#### Scenario: Esc with the dropdown open
+- **WHEN** the `@` dropdown is open and the user presses `esc`
+- **THEN** only the dropdown closes, and a second `esc` shows the discard prompt
+
 #### Scenario: Keep editing
-- **WHEN** the user types `standup`, presses `esc`, then `n`
+- **WHEN** the user types `standup`, presses `esc`, then `esc` again
 - **THEN** the form returns with `standup` still in the description
+
+### Requirement: Cancel keys don't clash with the edit review
+Because `y` saves in the edit dialog's review, `y` and `n` SHALL do nothing on the discard prompt, and the form's help line SHALL describe `esc` as cancelling on every row, never as "done".
+
+#### Scenario: Help on a time row
+- **WHEN** the log dialog's start row is focused
+- **THEN** the help line says `esc cancel`
 
 ### Requirement: The logged entry in the list
 A logged entry SHALL be listed under the day of its start, in start order, with the list cursor on it. Logging SHALL NOT stop or change a running entry. When the entry's start is outside the list's fetch window (earlier than its start, or later than now), the status line SHALL say it is outside the list and will drop off on the next refresh.

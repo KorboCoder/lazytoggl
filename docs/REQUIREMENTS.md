@@ -18,7 +18,7 @@
    per-day totals.
 7. **Resume** — select a past entry and start a new entry pre-filled with its
    description/project.
-8. **Projects** — pick, clear, or create an entry's project in the start and edit
+8. **Projects** — pick, clear, or create an entry's project in the start, edit, and log
    dialogs, from a project row's picker or by typing `@` in the description (as in
    the Toggl app). The list is "No project" (when there is one to remove), then
    active projects A–Z; typing filters by substring and offers `+ Create "<name>"`
@@ -81,10 +81,10 @@ picker as the edit dialog, with these differences.
 |---|---|---|
 | `enter` | description | Log the entry (while no `@` dropdown is open); 1 request, 2 with a `(new)` project |
 | `esc` | form | Cancel: closes at once if nothing changed from the defaults, otherwise asks `Discard this entry?` |
-| `y` | discard prompt | Discard and close |
-| `n` / `esc` | discard prompt | Back to the form |
+| `d` | discard prompt | Discard and close (not `y`: in the edit review `y` saves) |
+| `esc` | discard prompt | Back to the form |
 
-### Projects (start and edit dialogs)
+### Projects (start, edit, and log dialogs)
 
 | Key | Context | Action |
 |---|---|---|

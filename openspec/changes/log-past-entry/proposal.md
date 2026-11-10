@@ -24,8 +24,9 @@ project row with `@`.
   and the project row, `enter` opens that row's field or picker, as in the edit form.
   While the `@` dropdown is open, `enter` picks a project and doesn't log.
 - **`esc` cancels.** When nothing was changed from the defaults, it closes
-  immediately. Otherwise it asks `Discard this entry?`: `y` discards, and `n` or `esc`
-  goes back to the form.
+  immediately. Otherwise it asks `Discard this entry?`: `d` discards and `esc` goes
+  back to the form. `y` and `n` do nothing there, because in the edit review `y`
+  saves.
 - **There is no review step**, because every field is new.
 - **After logging,** the entry is listed under its day with the cursor on it, the
   same as after an edit. If its start is outside the fetch window (older than 8 days,
@@ -48,8 +49,8 @@ billable flag.
 | Log entry, start / stop / duration / project row | `enter` | Open the row's field or picker (as in the edit form) |
 | Log entry | `tab` / `shift+tab`, `down` / `up` | Move between rows (as in the edit form) |
 | Log entry | `esc` | Cancel; asks `Discard this entry?` only if something changed **(new)** |
-| Discard prompt | `y` | Discard and close **(new)** |
-| Discard prompt | `n` / `esc` | Back to the form **(new)** |
+| Discard prompt | `d` | Discard and close **(new)** |
+| Discard prompt | `esc` | Back to the form **(new)** |
 
 All field, picker, and dropdown keys are the same as in the edit dialog.
 

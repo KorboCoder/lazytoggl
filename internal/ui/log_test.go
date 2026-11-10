@@ -4,6 +4,7 @@ package ui
 // fixedNow is Tue 14 Jul 2026 12:00, so the log dialog opens on 11:30-12:00.
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/KorboCoder/lazytoggl/internal/toggl"
 	"github.com/KorboCoder/lazytoggl/internal/ui/dialogs"
+	"github.com/KorboCoder/lazytoggl/internal/ui/panels"
 )
 
 // openLog opens the log-entry dialog directly (the m key is wired in app.go).
@@ -104,23 +106,23 @@ func TestLogEscAfterTypingAsksThenDiscards(t *testing.T) {
 	d := newDriver(t)
 	openLog(d)
 	d.keys("standup", "esc")
-	d.dialogContains("Discard this entry?")
+	d.dialogContains("Discard this entry? d discard · esc back")
 	d.dialogLacks("Save changes?") // no review in log mode
-	d.key("y")
+	d.keys("y", "n")               // the edit review's keys do nothing here
+	d.dialogContains("Discard this entry?")
+	d.key("d")
 	if d.m.dialog != nil || d.mock.Calls("Log") != 0 {
 		t.Fatalf("after y: dialog open %v, Log calls %d; want closed and none", d.m.dialog != nil, d.mock.Calls("Log"))
 	}
 }
 
 func TestLogDiscardPromptBackKeepsForm(t *testing.T) {
-	for _, back := range []string{"n", "esc"} {
-		d := newDriver(t)
-		openLog(d)
-		d.keys("standup", "esc", back)
-		d.dialogLacks("Discard this entry?")
-		d.dialogContains("standup")
-		d.dialogContains("Log entry")
-	}
+	d := newDriver(t)
+	openLog(d)
+	d.keys("standup", "esc", "esc")
+	d.dialogLacks("Discard this entry?")
+	d.dialogContains("standup")
+	d.dialogContains("Log entry")
 }
 
 func TestLogDiscardPromptIgnoresOtherKeys(t *testing.T) {
@@ -149,8 +151,8 @@ func TestLogKeyOpensDialogFromTimer(t *testing.T) {
 
 func TestLogKeyShownInHelp(t *testing.T) {
 	d := newDriver(t)
-	if v := d.m.View(); !strings.Contains(v, "m log entry") {
-		t.Fatalf("help bar lacks \"m log entry\":\n%s", v)
+	if v := d.m.View(); !strings.Contains(v, "m log") || !strings.Contains(v, "? help") {
+		t.Fatalf("help bar lacks \"m log\" or \"? help\" at width 100:\n%s", v)
 	}
 }
 
@@ -176,9 +178,8 @@ func TestLogCreatesFinishedEntry(t *testing.T) {
 	if e.Running() || !e.Start.Equal(time.Date(2026, 7, 14, 11, 30, 0, 0, time.Local)) || e.Duration != 1800 {
 		t.Fatalf("logged = %+v, want finished 11:30-12:00", e)
 	}
-	headers, _ := listed(d)
-	if headers[0] != "Today" {
-		t.Fatalf("headers = %v, want the entry under Today", headers)
+	if h := headerAbove(t, d, e.ID); h != "Today" {
+		t.Fatalf("logged entry listed under %q, want Today", h)
 	}
 	wantSelected(t, d, e.ID)
 	if d.m.status != "entry logged" {
@@ -192,6 +193,50 @@ func TestLogKeepsTimerRunning(t *testing.T) {
 	if run := d.m.runningEntry(); run == nil || run.ID != 1 {
 		t.Fatalf("running entry = %+v, want ID1 still running", run)
 	}
+	entries, _ := d.mock.RecentEntries(context.Background())
+	for _, e := range entries {
+		if e.ID == 1 && !e.Running() {
+			t.Fatal("the mock's running entry was stopped by a log")
+		}
+	}
+}
+
+// headerAbove is the day header the entry with id is listed under.
+func headerAbove(t *testing.T, d *driver, id int64) string {
+	t.Helper()
+	header := ""
+	for _, r := range panels.BuildRows(d.m.entries, d.m.now) {
+		if r.Kind == panels.RowHeader {
+			header = r.Label
+		} else if r.Entry.ID == id {
+			return header
+		}
+	}
+	t.Fatalf("entry %d not listed", id)
+	return ""
+}
+
+// Every row's help says esc cancels, since in log mode esc on a changed
+// draft leads to the discard prompt, never to "done".
+func TestLogHelpSaysCancelOnEveryRow(t *testing.T) {
+	d := newDriver(t)
+	openLog(d)
+	for i := 0; i < 5; i++ {
+		d.dialogContains("esc cancel")
+		d.dialogLacks("esc done")
+		d.key("tab")
+	}
+}
+
+// With the @ dropdown open, esc only closes it; a second esc asks.
+func TestLogEscWithDropdownOnlyClosesIt(t *testing.T) {
+	d := newDriver(t)
+	openLog(d)
+	d.keys("x", " ", "@", "ac", "esc")
+	d.dialogContains("Log entry")
+	d.dialogLacks("Discard this entry?")
+	d.key("esc")
+	d.dialogContains("Discard this entry?")
 }
 
 func TestLogWithNewProjectCreatesThenLogs(t *testing.T) {

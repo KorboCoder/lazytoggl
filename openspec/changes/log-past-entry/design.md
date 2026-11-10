@@ -62,8 +62,10 @@ log" needs no extra code.
 ### 2. The discard prompt is a state like the review
 
 `confirmingDiscard` is set when `esc` finds changes. While it is set, the form stays
-visible and the help line reads `Discard this entry? y discard · n back`. `y` sends
-`CloseMsg`, and `n` or `esc` clears the state. Every other key is ignored, as in the
+visible and the help line reads `Discard this entry? d discard · esc back`. `d` sends
+`CloseMsg`, and `esc` clears the state. The key is `d`, not `y`, because in the edit
+review `y` saves: the same key must never mean the opposite in the two dialogs
+(review finding, decided by the user). Every other key is ignored, as in the
 review, so a stray letter can't edit the hidden form.
 
 ### 3. `Service.Log` creates a finished entry
