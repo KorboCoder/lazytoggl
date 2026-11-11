@@ -397,3 +397,46 @@ func TestGapKeysIgnoredOnTimerPanel(t *testing.T) {
 		t.Fatal("o/O on the timer panel opened a dialog")
 	}
 }
+
+// m's "now, to the minute" uses absolute time too, so it is right in the
+// repeated DST hour.
+func TestLogDefaultsInRepeatedDSTHour(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("no tz database: %v", err)
+	}
+	saved := time.Local
+	time.Local = ny
+	t.Cleanup(func() { time.Local = saved })
+	now := time.Date(2026, 11, 1, 6, 40, 27, 0, time.UTC).In(ny) // 01:40:27 EST, the second pass
+	dlg := dialogs.NewLog(now, nil)
+	dlg2, cmd := dlg.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_ = dlg2
+	msg, ok := cmd().(dialogs.LogSubmitMsg)
+	if want := now.Truncate(time.Minute); !ok || !msg.Req.Stop.Equal(want) {
+		t.Fatalf("stop = %s (ok %v), want %s", msg.Req.Stop, ok, want)
+	}
+}
+
+// Descriptions are shown as typed in the status, quotes included.
+func TestGapNoneStatusKeepsQuotes(t *testing.T) {
+	d := newDriver(t)
+	for i := range d.m.entries {
+		if d.m.entries[i].ID == 2 {
+			d.m.entries[i].Description = `Fix "login"`
+			d.m.entries[i].Stop = d.m.entries[i].Start.Add(110 * time.Minute)
+		}
+	}
+	d.keys("j", "O")
+	if d.m.status != `no gap above "Fix "login""` {
+		t.Fatalf("status = %q", d.m.status)
+	}
+}
+
+// With a dialog open, o and O are just letters in the description.
+func TestGapKeysTypeIntoOpenDialog(t *testing.T) {
+	d := newDriver(t)
+	d.keys("m", "o", "O")
+	d.dialogContains("Log entry")
+	d.dialogContains("oO")
+}

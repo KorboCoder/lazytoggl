@@ -415,7 +415,7 @@ func (m Model) openGap(rows []panels.Row, above bool) (tea.Model, tea.Cmd) {
 		if desc == "" {
 			desc = "(no description)"
 		}
-		m.setStatus(fmt.Sprintf("no gap %s %q", side, desc), false)
+		m.setStatus(fmt.Sprintf("no gap %s \"%s\"", side, desc), false)
 		return m, nil
 	}
 	m.dialog = dialogs.NewLogAt(start, stop, m.now, m.projectList())

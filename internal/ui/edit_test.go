@@ -787,3 +787,16 @@ func TestEditSaveAfterNowShowsStatus(t *testing.T) {
 		t.Fatal("entry left the list before a refresh")
 	}
 }
+
+// Retyping a duration on an entry whose start has seconds sets that
+// duration: restoring the old stop's seconds must not undo it.
+func TestEditDurationWithStartSecondsSticks(t *testing.T) {
+	d := openEditID3Shifted(t, 7, 0) // 12:00:07-13:00:00, shown as 00:59
+	d.dialogContains("00:59")
+	setRow(d, 3, "0100")
+	d.dialogContains("01:00")
+	_, stop := savedID3(t, d)
+	if want := time.Date(2026, 7, 13, 13, 0, 7, 0, time.Local); !stop.Equal(want) {
+		t.Fatalf("stop = %s, want %s", stop, want)
+	}
+}

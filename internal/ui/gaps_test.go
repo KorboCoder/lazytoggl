@@ -104,3 +104,72 @@ func TestGapAbove(t *testing.T) {
 			entries: []toggl.TimeEntry{running(9, at(14, 12, 20, 0)), review}, sel: 9, ok: false},
 	})
 }
+
+// Review follow-up: a gap never overlaps another entry on any day, the
+// running timer included.
+func TestGapNeverOverlaps(t *testing.T) {
+	cases := []struct {
+		name        string
+		f           func([]toggl.TimeEntry, toggl.TimeEntry, time.Time) (time.Time, time.Time, bool)
+		entries     []toggl.TimeEntry
+		sel         int64
+		now         time.Time
+		start, stop time.Time
+		ok          bool
+	}{
+		{name: "a: O across midnight stops at the timer", f: gapAbove,
+			entries: []toggl.TimeEntry{running(9, at(14, 0, 5, 0)), fin(1, at(13, 23, 0, 0), at(13, 23, 50, 0))}, sel: 1,
+			now: at(14, 0, 20, 0), start: at(13, 23, 50, 0), stop: at(14, 0, 5, 0), ok: true},
+		{name: "b: o fallback stops at yesterday's end", f: gapBelow,
+			entries: []toggl.TimeEntry{fin(1, at(14, 0, 10, 0), at(14, 0, 40, 0)), fin(2, at(13, 23, 0, 0), at(13, 23, 55, 0))}, sel: 1,
+			now: at(14, 12, 0, 0), start: at(13, 23, 55, 0), stop: at(14, 0, 10, 0), ok: true},
+		{name: "c: inside a longer entry", f: gapAbove,
+			entries: []toggl.TimeEntry{fin(3, at(14, 11, 30, 0), at(14, 11, 45, 0)), fin(1, at(14, 10, 0, 0), at(14, 10, 30, 0)), fin(2, at(14, 9, 0, 0), at(14, 11, 0, 0))}, sel: 1,
+			now: at(14, 12, 0, 0), ok: false},
+		{name: "c': inside an entry with the same start", f: gapAbove,
+			entries: []toggl.TimeEntry{fin(3, at(14, 11, 30, 0), at(14, 11, 45, 0)), fin(1, at(14, 10, 0, 0), at(14, 10, 30, 0)), fin(2, at(14, 10, 0, 0), at(14, 11, 0, 0))}, sel: 1,
+			now: at(14, 12, 0, 0), ok: false},
+		{name: "d: inside the running timer", f: gapAbove,
+			entries: []toggl.TimeEntry{fin(1, at(14, 11, 52, 0), at(14, 11, 55, 0)), running(9, at(14, 11, 50, 0))}, sel: 1,
+			now: at(14, 12, 0, 0), ok: false},
+		{name: "e: overnight entry stops at the next day's entry", f: gapAbove,
+			entries: []toggl.TimeEntry{fin(2, at(14, 1, 10, 0), at(14, 2, 0, 0)), fin(1, at(13, 23, 0, 0), at(14, 1, 0, 0))}, sel: 1,
+			now: at(14, 12, 0, 0), start: at(14, 1, 0, 0), stop: at(14, 1, 10, 0), ok: true},
+		{name: "past-day fallback never ends after now", f: gapAbove,
+			entries: []toggl.TimeEntry{fin(1, at(13, 23, 40, 0), at(13, 23, 50, 0))}, sel: 1,
+			now: at(14, 0, 5, 30), start: at(13, 23, 50, 0), stop: at(14, 0, 5, 0), ok: true},
+	}
+	for _, c := range cases {
+		var sel toggl.TimeEntry
+		for _, e := range c.entries {
+			if e.ID == c.sel {
+				sel = e
+			}
+		}
+		start, stop, ok := c.f(c.entries, sel, c.now)
+		if ok != c.ok || (ok && (!start.Equal(c.start) || !stop.Equal(c.stop))) {
+			t.Errorf("%s: got %s-%s ok=%v, want %s-%s ok=%v", c.name,
+				start.Format("02 15:04"), stop.Format("02 15:04"), ok,
+				c.start.Format("02 15:04"), c.stop.Format("02 15:04"), c.ok)
+		}
+	}
+}
+
+// Minute rounding uses absolute time, so the repeated DST hour isn't
+// mistaken for the earlier pass of the same wall time.
+func TestGapAboveNowInRepeatedDSTHour(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skipf("no tz database: %v", err)
+	}
+	saved := time.Local
+	time.Local = ny
+	t.Cleanup(func() { time.Local = saved })
+	// 01:40:27 EST, the second 01:xx of 2026-11-01.
+	now := time.Date(2026, 11, 1, 6, 40, 27, 0, time.UTC).In(ny)
+	sel := fin(1, now.Add(-time.Hour), now.Add(-30*time.Minute))
+	_, stop, ok := gapAbove([]toggl.TimeEntry{sel}, sel, now)
+	if want := now.Truncate(time.Minute); !ok || !stop.Equal(want) {
+		t.Fatalf("stop = %s (ok %v), want %s", stop, ok, want)
+	}
+}

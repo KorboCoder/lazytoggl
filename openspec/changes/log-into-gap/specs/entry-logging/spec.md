@@ -36,6 +36,21 @@
 - **WHEN** the user presses `O` on yesterday's last entry, which ended at 18:00
 - **THEN** the log dialog opens on yesterday 18:00–18:30
 
+### Requirement: A gap never overlaps an entry
+The gap `o` or `O` opens SHALL never overlap another entry on any day, the running entry included (it runs until now). The 30-minute fallbacks SHALL stop short of entries on neighbouring days. When the gap would still overlap an entry, such as one that contains the selected entry, the dialog SHALL NOT open, as for no gap.
+
+#### Scenario: Fallback across midnight
+- **WHEN** the selected entry starts today at 00:10, it is today's first, and yesterday's last entry ended at 23:55
+- **THEN** `o` opens the log dialog on yesterday 23:55 to today 00:10
+
+#### Scenario: Past day's last entry before a timer started after midnight
+- **WHEN** yesterday's last entry ended at 23:50 and a timer has been running since 00:05 today
+- **THEN** `O` on that entry opens the log dialog on 23:50–00:05
+
+#### Scenario: Inside a longer entry
+- **WHEN** the selected entry 10:00–10:30 lies inside an entry that ran 09:00–11:00
+- **THEN** `O` opens no dialog and says there is no gap above
+
 ### Requirement: No gap to fill
 When the gap `o` or `O` would open is shorter than one minute (the entries touch or overlap), the dialog SHALL NOT open, and the status line SHALL say `no gap below "<description>"` or `no gap above "<description>"`.
 

@@ -52,9 +52,19 @@ start, and it isn't `sel` (compared by ID).
 - With none: when `sel`'s day is today (local date of `now`), `stop = now` rounded
   down to the minute. Otherwise `stop = sel.Stop + 30m`.
 
-**Both:** `ok = stop.Sub(start) >= time.Minute`. A gap that would overlap an
-existing entry comes out negative or under a minute, so it is refused rather than
-clipped.
+**Both, after choosing the neighbour from the day:**
+- The gap is then kept clear of every entry on any day, the running entry
+  included, which runs until now. The fallbacks stop short of entries across
+  midnight (yesterday's last end, a timer started after midnight, an overnight
+  entry's next-day neighbour), and the past-day fallback never ends after now.
+- `fits` then refuses (`ok = false`) a gap under a minute, or one that still
+  overlaps an entry, for example when the selected entry lies inside a longer one
+  or inside the running timer.
+
+The code review found that the first version only refused overlaps with same-day
+neighbours, and laid gaps across midnight or inside containing entries.
+- Now on the minute uses `Truncate(time.Minute)` (absolute time), in `gapAbove`
+  and in `NewLog`, so the repeated DST hour rounds correctly.
 
 - *Why pure functions on the slice:* every edge case (overlaps, the running entry,
   day edges, seconds) is a row in a table test with no UI involved.
