@@ -277,3 +277,123 @@ func TestLogAfterNowShowsStatus(t *testing.T) {
 		t.Fatalf("status = %q, want the after-now warning", d.m.status)
 	}
 }
+
+// NewLogAt opens the log dialog on given times, seconds and all; untouched,
+// esc closes at once and enter logs exactly those times.
+func TestLogAtOpensOnGivenTimes(t *testing.T) {
+	start := time.Date(2026, 7, 14, 10, 15, 7, 0, time.Local)
+	stop := time.Date(2026, 7, 14, 11, 50, 0, 0, time.Local)
+	d := newDriver(t)
+	d.m.dialog = dialogs.NewLogAt(start, stop, d.m.now, d.m.projectList())
+	d.dialogContains("Log entry")
+	d.dialogContains("Tue 14 Jul 10:15")
+	d.dialogContains("Tue 14 Jul 11:50")
+	d.dialogContains("01:34")
+	msg, ok := dialogMsg(d, keyEnterMsg()).(dialogs.LogSubmitMsg)
+	if !ok || !msg.Req.Start.Equal(start) || !msg.Req.Stop.Equal(stop) {
+		t.Fatalf("enter = %+v (ok %v), want the exact times %s-%s", msg, ok, start, stop)
+	}
+
+	d.m.dialog = dialogs.NewLogAt(start, stop, d.m.now, d.m.projectList())
+	d.key("esc")
+	if d.m.dialog != nil {
+		t.Fatal("esc on an untouched NewLogAt dialog did not close it")
+	}
+}
+
+// o / O on the fixtures: ID1 running since 11:50, ID2 Standup 10:00-10:15,
+// ID3 yesterday 12:00-13:00. The cursor starts on ID1.
+
+func TestGapBelowKeyOpensOnGap(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "o") // ID2, the first entry today
+	d.dialogContains("Log entry")
+	d.dialogContains("Tue 14 Jul 09:30")
+	d.dialogContains("Tue 14 Jul 10:00")
+}
+
+func TestGapAboveKeyOpensUpToTimer(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "O")
+	d.dialogContains("Tue 14 Jul 10:15")
+	d.dialogContains("Tue 14 Jul 11:50")
+	d.dialogContains("01:35")
+}
+
+func TestGapBelowRunningEntry(t *testing.T) {
+	d := newDriver(t)
+	d.key("o") // on the running ID1
+	d.dialogContains("Tue 14 Jul 10:15")
+	d.dialogContains("Tue 14 Jul 11:50")
+}
+
+func TestGapAbovePastDay(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "O") // ID3, yesterday's last entry
+	d.dialogContains("Mon 13 Jul 13:00")
+	d.dialogContains("Mon 13 Jul 13:30")
+}
+
+func TestGapLogFillsItAndKeepsTimer(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "O", "gap", "enter")
+	e := loggedEntry(t, d, "gap")
+	if !e.Start.Equal(time.Date(2026, 7, 14, 10, 15, 0, 0, time.Local)) || !e.Stop.Equal(time.Date(2026, 7, 14, 11, 50, 0, 0, time.Local)) {
+		t.Fatalf("logged %s-%s, want 10:15-11:50", e.Start.Format("15:04"), e.Stop.Format("15:04"))
+	}
+	if run := d.m.runningEntry(); run == nil || run.ID != 1 {
+		t.Fatalf("running = %+v, want ID1 still running", run)
+	}
+}
+
+// No gap: Standup is moved to end exactly when the timer started.
+func TestGapNoneShowsStatus(t *testing.T) {
+	d := newDriver(t)
+	for i := range d.m.entries {
+		if d.m.entries[i].ID == 2 {
+			d.m.entries[i].Stop = d.m.entries[i].Start.Add(110 * time.Minute) // 11:50, the timer's start
+		}
+	}
+	d.keys("j", "O")
+	if d.m.dialog != nil {
+		t.Fatal("O on touching entries opened a dialog")
+	}
+	if d.m.status != `no gap above "Standup"` {
+		t.Fatalf("status = %q, want no gap above \"Standup\"", d.m.status)
+	}
+	d.key("k") // the running entry
+	d.key("o")
+	if d.m.dialog != nil || d.m.status != `no gap below "Writing project plan"` {
+		t.Fatalf("o on the timer: dialog %v, status %q", d.m.dialog != nil, d.m.status)
+	}
+}
+
+func TestGapNoneNamesEmptyDescription(t *testing.T) {
+	d := newDriver(t)
+	for i := range d.m.entries {
+		if d.m.entries[i].ID == 2 {
+			d.m.entries[i].Description = ""
+			d.m.entries[i].Stop = d.m.entries[i].Start.Add(110 * time.Minute)
+		}
+	}
+	d.keys("j", "O")
+	if d.m.status != `no gap above "(no description)"` {
+		t.Fatalf("status = %q", d.m.status)
+	}
+}
+
+func TestGapAboveRunningEntryShowsStatus(t *testing.T) {
+	d := newDriver(t)
+	d.key("O") // on the running ID1
+	if d.m.dialog != nil || d.m.status != "nothing after the running entry" {
+		t.Fatalf("dialog %v, status %q; want no dialog and the running-entry status", d.m.dialog != nil, d.m.status)
+	}
+}
+
+func TestGapKeysIgnoredOnTimerPanel(t *testing.T) {
+	d := newDriver(t)
+	d.keys("tab", "o", "O")
+	if d.m.dialog != nil {
+		t.Fatal("o/O on the timer panel opened a dialog")
+	}
+}

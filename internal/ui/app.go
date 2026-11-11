@@ -364,6 +364,9 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.dialog = dialogs.NewLog(m.now, m.projectList())
 		return m, textinput.Blink
 
+	case key.Matches(msg, m.keys.GapBelow), key.Matches(msg, m.keys.GapAbove):
+		return m.openGap(rows, key.Matches(msg, m.keys.GapAbove))
+
 	case key.Matches(msg, m.keys.Enter):
 		return m.handleEnter(rows)
 
@@ -385,6 +388,38 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	return m, nil
+}
+
+// openGap opens the log dialog on the gap below (o) or above (O) the
+// selected list entry. It acts on the list only: the timer panel has no
+// selection.
+func (m Model) openGap(rows []panels.Row, above bool) (tea.Model, tea.Cmd) {
+	if m.focus == focusTimer {
+		return m, nil
+	}
+	row, ok := m.entriesPanel.Selected(rows)
+	if !ok || row.Kind != panels.RowEntry {
+		return m, nil
+	}
+	gap, side := gapBelow, "below"
+	if above {
+		if row.Entry.Running() {
+			m.setStatus("nothing after the running entry", false)
+			return m, nil
+		}
+		gap, side = gapAbove, "above"
+	}
+	start, stop, ok := gap(m.entries, row.Entry, m.now)
+	if !ok {
+		desc := row.Entry.Description
+		if desc == "" {
+			desc = "(no description)"
+		}
+		m.setStatus(fmt.Sprintf("no gap %s %q", side, desc), false)
+		return m, nil
+	}
+	m.dialog = dialogs.NewLogAt(start, stop, m.now, m.projectList())
+	return m, textinput.Blink
 }
 
 // actionTarget is the entry e/d act on: whatever the Timer panel is showing

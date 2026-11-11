@@ -85,8 +85,13 @@ const dayMinutes = 24 * 60
 func NewLog(now time.Time, projects []toggl.Project) *Edit {
 	n := now.Local()
 	stop := time.Date(n.Year(), n.Month(), n.Day(), n.Hour(), n.Minute(), 0, 0, time.Local)
-	start := stop.Add(-30 * time.Minute)
-	d := NewEdit(toggl.TimeEntry{Start: start, Stop: stop, Duration: int64((30 * time.Minute).Seconds())}, now, projects)
+	return NewLogAt(stop.Add(-30*time.Minute), stop, now, projects)
+}
+
+// NewLogAt opens the log-entry dialog on start-stop exactly, seconds
+// included (o/O open it on a gap, so a logged gap meets its neighbours).
+func NewLogAt(start, stop, now time.Time, projects []toggl.Project) *Edit {
+	d := NewEdit(toggl.TimeEntry{Start: start, Stop: stop, Duration: int64(stop.Sub(start).Seconds())}, now, projects)
 	d.logMode = true
 	return d
 }
