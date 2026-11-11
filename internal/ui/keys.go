@@ -8,6 +8,7 @@ type keyMap struct {
 	Enter   key.Binding
 	Space   key.Binding
 	Create  key.Binding
+	Log     key.Binding
 	Edit    key.Binding
 	Delete  key.Binding
 	Refresh key.Binding
@@ -23,6 +24,7 @@ func defaultKeys() keyMap {
 		Enter:   key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "resume/stop")),
 		Space:   key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "pause/resume")),
 		Create:  key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "new entry")),
+		Log:     key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "log")), // Toggl's manual-mode key
 		Edit:    key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 		Delete:  key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
 		Refresh: key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
@@ -33,13 +35,13 @@ func defaultKeys() keyMap {
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Space, k.Create, k.Enter, k.Edit, k.Delete, k.Help}
+	return []key.Binding{k.Space, k.Create, k.Log, k.Enter, k.Edit, k.Delete, k.Help}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Tab},
-		{k.Space, k.Create, k.Enter},
+		{k.Space, k.Create, k.Log, k.Enter},
 		{k.Edit, k.Delete, k.Refresh},
 		{k.Help, k.Quit},
 	}

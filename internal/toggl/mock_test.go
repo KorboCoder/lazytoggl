@@ -250,3 +250,27 @@ func TestMockDuplicateProjectIsAPIError(t *testing.T) {
 		t.Fatalf("err = %v, want an *APIError with status 400", err)
 	}
 }
+
+// Like the API (confirmed live), logging a finished entry leaves the
+// running entry running.
+func TestMockLogKeepsTimerRunning(t *testing.T) {
+	m := NewMock()
+	ctx := context.Background()
+	now := time.Now()
+	e, err := m.Log(ctx, LogRequest{Description: "standup", ProjectID: 102, Start: now.Add(-time.Hour), Stop: now.Add(-30 * time.Minute)})
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if e.ID == 0 || e.Running() || e.Duration != 1800 || e.ProjectID != 102 || e.Description != "standup" {
+		t.Fatalf("entry = %+v, want a finished 30-minute standup on 102", e)
+	}
+	entries, _ := m.RecentEntries(ctx)
+	var running, logged bool
+	for _, x := range entries {
+		running = running || (x.ID == 1 && x.Running())
+		logged = logged || x.ID == e.ID
+	}
+	if !running || !logged {
+		t.Fatalf("running entry still running: %v; logged entry listed: %v", running, logged)
+	}
+}

@@ -83,7 +83,7 @@ func (d *driver) press(msg tea.KeyMsg) {
 	// can emit app messages (submit/close/confirm) are worth executing.
 	if hadDialog && d.m.dialog != nil {
 		switch msg.String() {
-		case "enter", "esc", "y", "n":
+		case "enter", "esc", "y", "n", "d":
 		default:
 			return
 		}
@@ -104,7 +104,7 @@ func (d *driver) feed(msg tea.Msg) {
 	switch msg.(type) {
 	case dataLoadedMsg, entryStartedMsg, entryStoppedMsg, entryPausedMsg, entryUpdatedMsg,
 		entryDeletedMsg, errMsg, projectCreatedMsg,
-		dialogs.CloseMsg, dialogs.StartSubmitMsg, dialogs.EditSubmitMsg,
+		dialogs.CloseMsg, dialogs.StartSubmitMsg, dialogs.EditSubmitMsg, dialogs.LogSubmitMsg, entryLoggedMsg,
 		dialogs.DeleteConfirmMsg:
 		mm, cmd := d.m.Update(msg)
 		d.m = mm.(Model)

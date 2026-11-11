@@ -590,3 +590,57 @@ func TestProjectsPagingIsCapped(t *testing.T) {
 		t.Fatalf("%d requests, want the cap of %d", len(*requests), maxProjectPages)
 	}
 }
+
+// Logging creates a finished entry: start, stop and duration in one POST,
+// which (confirmed live) leaves a running timer running.
+func TestLogSendsFinishedEntry(t *testing.T) {
+	var body map[string]any
+	c, requests := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, 200, map[string]any{
+			"id": 9, "workspace_id": 555, "project_id": 101, "description": "standup",
+			"start": "2026-07-14T11:30:00Z", "stop": "2026-07-14T12:00:00Z", "duration": 1800,
+		})
+	})
+	start := time.Date(2026, 7, 14, 11, 30, 0, 0, time.UTC)
+	e, err := c.Log(context.Background(), LogRequest{Description: "standup", ProjectID: 101, Start: start, Stop: start.Add(30 * time.Minute)})
+	if err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if e.Running() || e.ID != 9 || e.Duration != 1800 || e.ProjectID != 101 {
+		t.Fatalf("entry = %+v, want the finished 30-minute entry 9 on 101", e)
+	}
+	req := (*requests)[0]
+	if req.Method != http.MethodPost || req.URL.Path != "/workspaces/555/time_entries" {
+		t.Fatalf("request = %s %s, want POST /workspaces/555/time_entries", req.Method, req.URL.Path)
+	}
+	want := map[string]any{
+		"workspace_id": float64(555), "description": "standup", "project_id": float64(101),
+		"start": "2026-07-14T11:30:00Z", "stop": "2026-07-14T12:00:00Z",
+		"duration": float64(1800), "created_with": "lazytoggl",
+	}
+	if len(body) != len(want) {
+		t.Fatalf("body = %v, want exactly %v", body, want)
+	}
+	for k, v := range want {
+		if body[k] != v {
+			t.Fatalf("body[%q] = %v, want %v", k, body[k], v)
+		}
+	}
+}
+
+func TestLogOmitsProjectWhenNone(t *testing.T) {
+	var body map[string]any
+	c, _ := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		json.NewDecoder(r.Body).Decode(&body)
+		writeJSON(w, 200, map[string]any{"id": 9, "workspace_id": 555, "description": "",
+			"start": "2026-07-14T11:30:00Z", "stop": "2026-07-14T12:00:00Z", "duration": 1800})
+	})
+	start := time.Date(2026, 7, 14, 11, 30, 0, 0, time.UTC)
+	if _, err := c.Log(context.Background(), LogRequest{Start: start, Stop: start.Add(30 * time.Minute)}); err != nil {
+		t.Fatalf("Log: %v", err)
+	}
+	if _, has := body["project_id"]; has {
+		t.Fatalf("project_id sent for an entry with no project: %v", body)
+	}
+}

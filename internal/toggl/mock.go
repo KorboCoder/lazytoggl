@@ -144,6 +144,20 @@ func (m *Mock) Start(ctx context.Context, req StartRequest) (TimeEntry, error) {
 	return e, nil
 }
 
+func (m *Mock) Log(ctx context.Context, req LogRequest) (TimeEntry, error) {
+	m.countCall("Log")
+	time.Sleep(mockLatency)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.nextID++
+	e := TimeEntry{
+		ID: m.nextID, WorkspaceID: 1, ProjectID: req.ProjectID, Description: req.Description,
+		Start: req.Start, Stop: req.Stop, Duration: int64(req.Stop.Sub(req.Start).Seconds()),
+	}
+	m.entries = append(m.entries, e) // the running entry is left alone
+	return e, nil
+}
+
 func (m *Mock) Stop(ctx context.Context, entryID int64) (TimeEntry, error) {
 	m.countCall("Stop")
 	time.Sleep(mockLatency)

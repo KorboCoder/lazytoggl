@@ -7,23 +7,27 @@
    `workspace_id` in the config file. The token never touches disk in plaintext.
 2. **Start a time entry** with a description and, optionally, a project.
 3. **Stop the active entry.**
-4. **Active-timer panel** showing the running entry's description, project, and a
+4. **Log a past entry** (`m`) — like Toggl's manual mode: a form for a finished
+   entry that opens on the 30 minutes ending now, with the edit form's fields, rules,
+   and project picker. `enter` on the description logs it (1 request); it never stops
+   a running timer.
+5. **Active-timer panel** showing the running entry's description, project, and a
    live-ticking elapsed time (computed locally from the entry's start timestamp — no API
    calls to tick).
-5. **Recent entries list** — today plus the past several days, grouped by day with
+6. **Recent entries list** — today plus the past several days, grouped by day with
    per-day totals.
-6. **Resume** — select a past entry and start a new entry pre-filled with its
+7. **Resume** — select a past entry and start a new entry pre-filled with its
    description/project.
-7. **Projects** — pick, clear, or create an entry's project in the start and edit
+8. **Projects** — pick, clear, or create an entry's project in the start, edit, and log
    dialogs, from a project row's picker or by typing `@` in the description (as in
    the Toggl app). The list is "No project" (when there is one to remove), then
    active projects A–Z; typing filters by substring and offers `+ Create "<name>"`
    when no name matches exactly. A new project is created only when the entry is
    saved (1 extra request).
-8. **Edit** an entry's description, project, start/stop date and time, and duration (times are
+9. **Edit** an entry's description, project, start/stop date and time, and duration (times are
    edited as `HH:MM`, with the date beside them in the same field), reviewing a
    before → after summary before saving; **delete** with a confirmation dialog.
-9. **Manual refresh only** (`r`). No background polling. Every mutation updates local
+10. **Manual refresh only** (`r`). No background polling. Every mutation updates local
    state from the API response, so normal usage costs 1 request per action plus 1 fetch
    at startup. This is a hard requirement from the Free-plan rate limit
    (see [ARCHITECTURE.md](ARCHITECTURE.md#rate-limits)).
@@ -46,6 +50,7 @@ toggles, `enter` acts on the selection.
 | Key | Context | Action |
 |---|---|---|
 | `c` | anywhere | Create: open an empty start dialog |
+| `m` | anywhere | Log a finished entry (Toggl's manual mode): open the log-entry dialog on the last 30 minutes |
 | `space` | anywhere | Pause/resume: toggles whatever the Timer panel already shows. Running → stops it via the API but keeps it **pinned** to the panel (⏸, frozen clock) instead of clearing to idle. Paused → continues it (Toggl has no true pause — resume starts a new entry copying the paused one, like the desktop app's "continue" button). Idle (nothing running or paused) → **no-op**; it never reaches into history to resume something on its own |
 | `enter` | on a past entry | Open start dialog **pre-filled** from that entry (resume); `enter` again to go |
 | `enter` | on the running entry | Stop it (clears the Timer panel to idle — unlike `space`) |
@@ -67,7 +72,19 @@ toggles, `enter` acts on the selection.
 | `enter` | project row | Open the project picker |
 | `esc` | form | Cancel |
 
-### Projects (start and edit dialogs)
+### Log-entry dialog
+
+The edit form for a new, finished entry: the same rows, fields, keys, and project
+picker as the edit dialog, with these differences.
+
+| Key | Context | Action |
+|---|---|---|
+| `enter` | description | Log the entry (while no `@` dropdown is open); 1 request, 2 with a `(new)` project |
+| `esc` | form | Cancel: closes at once if nothing changed from the defaults, otherwise asks `Discard this entry?` |
+| `d` | discard prompt | Discard and close (not `y`: in the edit review `y` saves) |
+| `esc` | discard prompt | Back to the form |
+
+### Projects (start, edit, and log dialogs)
 
 | Key | Context | Action |
 |---|---|---|

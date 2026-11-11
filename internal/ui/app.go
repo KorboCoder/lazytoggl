@@ -93,6 +93,10 @@ type entryStoppedMsg struct{ entry toggl.TimeEntry }
 type entryPausedMsg struct{ entry toggl.TimeEntry }
 type entryUpdatedMsg struct{ entry toggl.TimeEntry }
 
+// entryLoggedMsg reports a finished entry created after the fact. Unlike
+// entryStartedMsg it never stops the running entry (nor does Toggl).
+type entryLoggedMsg struct{ entry toggl.TimeEntry }
+
 // projectCreatedMsg reports a project created for an entry being saved;
 // next saves the entry with the project's ID.
 type projectCreatedMsg struct {
@@ -239,6 +243,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus(msg.status, false)
 		return m, msg.next(msg.project.ID)
 
+	case dialogs.LogSubmitMsg:
+		m.dialog = nil
+		if msg.NewProject != "" {
+			req := msg.Req
+			m.setStatus("creating project…", false)
+			return m, m.createProjectCmd(msg.NewProject, "logging…", func(id int64) tea.Cmd {
+				req.ProjectID = id
+				return m.logCmd(req)
+			})
+		}
+		m.setStatus("logging…", false)
+		return m, m.logCmd(msg.Req)
+
+	case entryLoggedMsg:
+		m.replaceEntry(msg.entry)
+		m.entriesPanel.SelectID(panels.BuildRows(m.entries, m.now), msg.entry.ID)
+		m.notice = ""
+		m.setStatus(loggedStatus(msg.entry, m.now), false)
+		return m, nil
+
 	case dialogs.EditSubmitMsg:
 		m.dialog = nil
 		if msg.NewProject != "" {
@@ -334,6 +358,10 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Create):
 		m.dialog = dialogs.NewStart("Start entry", "", 0, m.projectList())
+		return m, textinput.Blink
+
+	case key.Matches(msg, m.keys.Log):
+		m.dialog = dialogs.NewLog(m.now, m.projectList())
 		return m, textinput.Blink
 
 	case key.Matches(msg, m.keys.Enter):
@@ -479,15 +507,30 @@ func (m *Model) clampCursor() {
 // won't come back on refresh, so say so rather than let it vanish
 // unexplained.
 func savedStatus(e toggl.TimeEntry, prevStart, now time.Time) string {
-	if e.Start.Equal(prevStart) || toggl.InRecentWindow(e.Start, now) {
+	if e.Start.Equal(prevStart) {
 		return "entry saved"
 	}
+	return windowStatus("entry saved", "moved to", e, now)
+}
+
+// loggedStatus is the status after logging a new entry: there is no earlier
+// start, so it warns whenever the entry lands outside the window.
+func loggedStatus(e toggl.TimeEntry, now time.Time) string {
+	return windowStatus("entry logged", "on", e, now)
+}
+
+// windowStatus is done, plus a warning when e's start is outside the fetch
+// window: it stays listed now but won't come back on refresh.
+func windowStatus(done, dayPrep string, e toggl.TimeEntry, now time.Time) string {
+	if toggl.InRecentWindow(e.Start, now) {
+		return done
+	}
 	if e.Start.After(now) {
-		return "entry saved — starts after now, outside the list; it drops off on refresh"
+		return done + " — starts after now, outside the list; it drops off on refresh"
 	}
 	days := int(toggl.RecentEntriesLookback / (24 * time.Hour))
-	return fmt.Sprintf("entry saved — moved to %s, outside the %d-day list; it drops off on refresh",
-		e.Start.Local().Format("Mon, Jan 2"), days)
+	return fmt.Sprintf("%s — %s %s, outside the %d-day list; it drops off on refresh",
+		done, dayPrep, e.Start.Local().Format("Mon, Jan 2"), days)
 }
 
 // replaceEntry patches e into m.entries and keeps them newest-first, which
@@ -611,6 +654,17 @@ func (m Model) createProjectCmd(name, status string, next func(int64) tea.Cmd) t
 			return errMsg{createProjectError{name: name, err: err}}
 		}
 		return projectCreatedMsg{project: p, status: status, next: next}
+	}
+}
+
+func (m Model) logCmd(req toggl.LogRequest) tea.Cmd {
+	svc := m.svc
+	return func() tea.Msg {
+		e, err := svc.Log(context.Background(), req)
+		if err != nil {
+			return errMsg{err}
+		}
+		return entryLoggedMsg{entry: e}
 	}
 }
 
