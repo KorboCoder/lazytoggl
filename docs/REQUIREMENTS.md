@@ -51,6 +51,7 @@ toggles, `enter` acts on the selection.
 |---|---|---|
 | `c` | anywhere | Create: open an empty start dialog |
 | `m` | anywhere | Log a finished entry (Toggl's manual mode): open the log-entry dialog on the last 30 minutes |
+| `o` / `O` | entries list | Log into the gap below (earlier) / above (later) the selected entry, like vim's open-line: the log-entry dialog opens on the exact gap between it and its neighbour that day. No gap → a status line instead |
 | `space` | anywhere | Pause/resume: toggles whatever the Timer panel already shows. Running → stops it via the API but keeps it **pinned** to the panel (⏸, frozen clock) instead of clearing to idle. Paused → continues it (Toggl has no true pause — resume starts a new entry copying the paused one, like the desktop app's "continue" button). Idle (nothing running or paused) → **no-op**; it never reaches into history to resume something on its own |
 | `enter` | on a past entry | Open start dialog **pre-filled** from that entry (resume); `enter` again to go |
 | `enter` | on the running entry | Stop it (clears the Timer panel to idle — unlike `space`) |
@@ -75,7 +76,13 @@ toggles, `enter` acts on the selection.
 ### Log-entry dialog
 
 The edit form for a new, finished entry: the same rows, fields, keys, and project
-picker as the edit dialog, with these differences.
+picker as the edit dialog, with these differences. `m` opens it on the last 30
+minutes; `o` / `O` open it on the gap below / above the selected entry: from the latest
+end before it (or 30 minutes before, at the start of a day) to its start, or from its
+end to the next entry's start (the running timer's start, now for today's newest
+entry, or 30 minutes after on a past day). Gaps are within the entry's day, keep exact
+seconds, and never overlap another entry; `O` on the running entry has nothing after
+it.
 
 | Key | Context | Action |
 |---|---|---|

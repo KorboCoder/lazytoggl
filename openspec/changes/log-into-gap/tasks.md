@@ -20,9 +20,9 @@ since 11:50, ID2 "Standup" ran 10:00–10:15 today, and ID3 "Yesterday task" ran
 
 ## 4. Docs and integration
 
-- [ ] 4.1 Update `docs/REQUIREMENTS.md` (keymap: `o` / `O` in the list; the log-entry section mentions opening on a gap), `README.md` (keys table), and `docs/PLAN.md` (the "Logging past entries" row: `o`/`O` done, citing this change). Verify by reading each key against `proposal.md`'s table
-- [ ] 4.2 Run `go test -race ./...` and verify it passes
-- [ ] 4.3 Run `go run . -mock` and verify by hand: `o` and `O` on an entry between two others open on the exact gap; logging it fills the gap with the timer still ticking; `o` on touching entries shows the status line; `?` lists `o` / `O`
+- [x] 4.1 Update `docs/REQUIREMENTS.md` (keymap: `o` / `O` in the list; the log-entry section mentions opening on a gap), `README.md` (keys table), and `docs/PLAN.md` (the "Logging past entries" row: `o`/`O` done, citing this change). Verify by reading each key against `proposal.md`'s table
+- [x] 4.2 Run `go test -race ./...` and verify it passes
+- [x] 4.3 Run `go run . -mock` and verify by hand: `o` and `O` on an entry between two others open on the exact gap; logging it fills the gap with the timer still ticking; `o` on touching entries shows the status line; `?` lists `o` / `O`
 
 ## Workflow follow-up
 
