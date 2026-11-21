@@ -83,10 +83,15 @@ const dayMinutes = 24 * 60
 // (to the minute). The defaults are its orig, so changes() reports exactly
 // what the user changed.
 func NewLog(now time.Time, projects []toggl.Project) *Edit {
-	n := now.Local()
-	stop := time.Date(n.Year(), n.Month(), n.Day(), n.Hour(), n.Minute(), 0, 0, time.Local)
-	start := stop.Add(-30 * time.Minute)
-	d := NewEdit(toggl.TimeEntry{Start: start, Stop: stop, Duration: int64((30 * time.Minute).Seconds())}, now, projects)
+	// Truncate works on absolute time, so the repeated DST hour rounds right.
+	stop := now.Truncate(time.Minute).Local()
+	return NewLogAt(stop.Add(-30*time.Minute), stop, now, projects)
+}
+
+// NewLogAt opens the log-entry dialog on start-stop exactly, seconds
+// included (o/O open it on a gap, so a logged gap meets its neighbours).
+func NewLogAt(start, stop, now time.Time, projects []toggl.Project) *Edit {
+	d := NewEdit(toggl.TimeEntry{Start: start, Stop: stop, Duration: int64(stop.Sub(start).Seconds())}, now, projects)
 	d.logMode = true
 	return d
 }
@@ -387,9 +392,12 @@ func (d *Edit) applyTime(r editRow, v time.Time) {
 func (d *Edit) applyField(r editRow, minutes int) {
 	switch r {
 	case rowDuration:
-		stop := d.start.Add(time.Duration(max(1, minutes)) * time.Minute)
+		want := max(1, minutes)
+		stop := d.start.Add(time.Duration(want) * time.Minute)
 		d.stop = restoreIfSameMinute(stop, d.orig.Stop)
-		if d.stop.Sub(d.start) < time.Minute {
+		// Restoring the old stop's seconds must keep the typed duration;
+		// with a start that has seconds it can fall a minute short.
+		if d.stop.Sub(d.start) < time.Minute || d.durationMinutes() != want {
 			d.stop = stop
 		}
 	}

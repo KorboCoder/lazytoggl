@@ -41,6 +41,7 @@ clock.
 |---|---|
 | `c` | Create a new time entry (from anywhere) |
 | `m` | Log a finished entry, like Toggl's manual mode: opens on the last 30 minutes; `enter` on the description logs it |
+| `o` / `O` | Log into the gap below / above the selected entry (vim's open-line): opens on the exact gap to its neighbour that day |
 | `space` | Pause/resume: toggles whatever the Timer panel already shows (running → pause, paused → resume); a no-op when the panel is idle |
 | `enter` | Resume the selected entry (pre-filled dialog), or stop it if running |
 | `e` | Edit — the selection in the list, or whatever the Timer panel shows (running, else paused) when it's focused |
