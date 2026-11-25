@@ -23,6 +23,10 @@ key's command inside the dialog and returns the message.
   - `m`, then the same steps through the project row, logs the entry.
   - `e` on an entry: picking a project keeps focus on the project row.
 
+## 4. Review follow-ups
+
+- [x] 4.1 Tighten the tests to their scenarios: `TestLogPickFromRowThenEnterLogs` runs the full round trip (one `Log` call, dialog closed, entry on Internal); `TestStartPickerEscKeepsProjectRow` starts from a set project and moves the selection before `esc`; add `TestLogPickerEscKeepsProjectRow` and `TestStartPickCreateThenEnterStarts`. Note the focus move in the Start and Log-entry keymap tables of `docs/REQUIREMENTS.md`. Verify with `go test -race ./...`
+
 ## Workflow follow-up
 
 - Run superpowers:requesting-code-review once all tasks are checked.

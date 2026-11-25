@@ -51,9 +51,24 @@ func TestStartPickProjectFromRow(t *testing.T) {
 // esc in the row's picker picks nothing, so focus stays on the project row.
 func TestStartPickerEscKeepsProjectRow(t *testing.T) {
 	d := newDriver(t)
-	d.keys("c", "Task", "tab", "enter", "esc")
+	d.keys("j", "j", "enter") // resume ID3, on Internal
+	d.keys("tab", "enter", "down", "esc")
 	d.dialogLacks("search or create")
 	d.dialogContains("> project")
+	d.dialogContains("Internal")
+}
+
+// Picking "+ Create" is a pick like any other: focus moves to the
+// description, and enter creates the project, then starts.
+func TestStartPickCreateThenEnterStarts(t *testing.T) {
+	d := newDriver(t)
+	d.keys("c", "Task", "tab", "enter", "zzz", "enter")
+	d.dialogContains("> description")
+	d.dialogContains("zzz (new)")
+	d.key("enter")
+	if d.mock.Calls("CreateProject") != 1 || d.mock.Calls("Start") != 1 {
+		t.Fatalf("CreateProject %d, Start %d calls; want 1 and 1", d.mock.Calls("CreateProject"), d.mock.Calls("Start"))
+	}
 }
 
 // tab in the picker picks like enter, and also moves focus to the description.

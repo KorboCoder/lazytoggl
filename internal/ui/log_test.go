@@ -444,11 +444,23 @@ func TestGapKeysTypeIntoOpenDialog(t *testing.T) {
 // the next enter logs (spec project-picking, "Pick, then log").
 func TestLogPickFromRowThenEnterLogs(t *testing.T) {
 	d := newDriver(t)
-	openLog(d)
-	d.keys("standup", "shift+tab", "enter", "int", "enter") // project row is last
+	d.keys("m", "standup", "shift+tab", "enter", "int", "enter") // project row is last
 	d.dialogLacks("search or create")
-	msg, ok := dialogMsg(d, keyEnterMsg()).(dialogs.LogSubmitMsg)
-	if !ok || msg.Req.Description != "standup" || msg.Req.ProjectID != 102 {
-		t.Fatalf("enter after the pick = %+v (ok %v), want standup on Internal (102)", msg, ok)
+	d.dialogContains("> description")
+	d.key("enter")
+	if d.m.dialog != nil || d.mock.Calls("Log") != 1 {
+		t.Fatalf("dialog open %v, Log calls %d; want closed and 1", d.m.dialog != nil, d.mock.Calls("Log"))
 	}
+	if e := loggedEntry(t, d, "standup"); e.ProjectID != 102 {
+		t.Fatalf("logged on project %d, want Internal (102)", e.ProjectID)
+	}
+}
+
+// esc in the log dialog's picker picks nothing: focus stays on the row.
+func TestLogPickerEscKeepsProjectRow(t *testing.T) {
+	d := newDriver(t)
+	openLog(d)
+	d.keys("shift+tab", "enter", "esc")
+	d.dialogLacks("search or create")
+	d.dialogContains("> project")
 }
