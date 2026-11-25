@@ -12,6 +12,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"github.com/KorboCoder/lazytoggl/internal/toggl"
 	"github.com/KorboCoder/lazytoggl/internal/ui/panels"
@@ -323,4 +324,180 @@ func TestUndoHintSurvivesOtherStatus(t *testing.T) {
 	}
 	wantView(t, d, "timer started")
 	wantView(t, d, `deleted "Yesterday task" · u undo`)
+}
+
+// --- Review follow-ups ---
+
+// Starting a new timer stops the running entry in Toggl, so an undo of the
+// deleted running entry brings it back stopped, not as a second timer.
+func TestUndoAfterStartIsNotASecondTimer(t *testing.T) {
+	d := newDriver(t)
+	d.keys("d", "c", "fresh", "enter", "u") // delete ID1 (running), start, undo
+	running := 0
+	for _, e := range d.m.entries {
+		if e.Running() {
+			running++
+		}
+	}
+	if running != 1 {
+		t.Fatalf("running entries = %d, want 1 after undo", running)
+	}
+	if e, ok := d.entryByID(1); !ok || e.Running() {
+		t.Fatalf("ID1 = %+v (listed %v), want it back and stopped", e, ok)
+	}
+}
+
+// The same for a deleted paused entry: a new start supersedes the pause.
+func TestUndoAfterStartIsNotPausedAgain(t *testing.T) {
+	d := newDriver(t)
+	d.keys("tab", " ", "d", "c", "fresh", "enter", "u")
+	if d.m.pausedID == 1 {
+		t.Fatal("undo made the superseded entry paused again")
+	}
+}
+
+// A reply to a request sent before the delete updates the hidden copy; it
+// doesn't bring the entry back into view.
+func TestInFlightReplyDoesNotUnhide(t *testing.T) {
+	d := newDriver(t)
+	d.key("tab")
+	// Pause in flight: run the key but hold the reply.
+	mm, cmd := d.m.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune(" ")})
+	d.m = mm.(Model)
+	reply := cmd()
+	d.key("d") // delete ID1 while the pause is in flight
+	d.feed(reply)
+	if _, ok := d.entryByID(1); ok {
+		t.Fatal("the pause reply brought the deleted entry back")
+	}
+	if d.m.pausedEntry() != nil {
+		t.Fatal("the hidden entry shows as paused")
+	}
+	d.key("u")
+	if p := d.m.pausedEntry(); p == nil || p.ID != 1 || p.Running() {
+		t.Fatalf("after undo: paused = %+v, want ID1 paused as Toggl has it", p)
+	}
+}
+
+// The hint keeps "u undo (Ns)" on screen at 80 columns, shortening the
+// description (and then the other status) to make room.
+func TestUndoHintFitsNarrowTerminal(t *testing.T) {
+	d := newDriver(t)
+	mm, _ := d.m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
+	d.m = mm.(Model)
+	for i := range d.m.entries {
+		if d.m.entries[i].ID == 3 {
+			d.m.entries[i].Description = "Quarterly roadmap review with the design team and stakeholders"
+		}
+	}
+	d.keys("j", "j", "d", "c", "fresh", "enter")
+	var status string
+	for _, line := range strings.Split(view(d), "\n") {
+		if strings.Contains(line, "deleted") {
+			status = strings.TrimRight(line, " ") // JoinVertical pads to the widest block
+		}
+	}
+	if !strings.Contains(status, "u undo (5s)") || lipglossWidth(status) > 80 {
+		t.Fatalf("status line (%d cols) = %q, want it within 80 with \"u undo (5s)\"", lipglossWidth(status), status)
+	}
+}
+
+// While quitting, only q and ctrl+c act: no new delete can slip in and be
+// dropped, and no dialog stays open over the quitting status.
+func TestQuittingIgnoresOtherKeys(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d")
+	mm, cmd := d.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}) // ID3 in flight
+	d.m = mm.(Model)
+	reply := cmd()
+	d.keys("k", "d", "c") // would delete another entry and open a dialog
+	if d.m.pending != nil || d.m.dialog != nil {
+		t.Fatalf("while quitting: pending %v, dialog %v; want neither", d.m.pending != nil, d.m.dialog != nil)
+	}
+	mm, _ = d.m.Update(reply)
+	d.m = mm.(Model)
+	wantNoView(t, d, "entry deleted")
+}
+
+func TestCtrlCClosesDialogWhileQuitting(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d", "c")
+	mm, _ := d.m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	d.m = mm.(Model)
+	if d.m.dialog != nil {
+		t.Fatal("the dialog stayed open over the quitting status")
+	}
+	wantView(t, d, "deleting before quitting")
+}
+
+// The quitting status stays while more deletes are in flight.
+func TestQuittingStatusSurvivesAnswers(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d")
+	mm, _ := d.m.Update(tickMsg(fixedNow.Add(5 * time.Second))) // ID3 in flight
+	d.m = mm.(Model)
+	selectEntry(d, 2)
+	d.key("d") // Standup pending
+	mm, _ = d.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	d.m = mm.(Model)
+	mm, _ = d.m.Update(entryDeletedMsg{id: 3})
+	d.m = mm.(Model)
+	wantView(t, d, "q again to quit now")
+}
+
+// A delete that fails on the way out is reported after quitting.
+func TestFailedDeleteOnQuitIsReported(t *testing.T) {
+	mock := toggl.NewMock()
+	d := newDriverWith(t, failingDeleteService{mock}, mock)
+	d.keys("j", "j", "d")
+	mm, cmd := d.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	d.m = mm.(Model)
+	mm, _ = d.m.Update(cmd())
+	d.m = mm.(Model)
+	if msg := d.m.QuitError(); !strings.Contains(msg, "Yesterday task") || !strings.Contains(msg, "still in Toggl") {
+		t.Fatalf("QuitError() = %q, want it to name the entry and say it's still in Toggl", msg)
+	}
+}
+
+// Undo restores the entry as the latest refresh returned it.
+func TestUndoAfterRefreshRestoresFreshCopy(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d")
+	fresh := fixtureEntries()
+	for i := range fresh {
+		if fresh[i].ID == 3 {
+			fresh[i].Description = "Renamed elsewhere"
+		}
+	}
+	d.feed(dataLoadedMsg{entries: fresh})
+	d.key("u")
+	if e, _ := d.entryByID(3); e.Description != "Renamed elsewhere" {
+		t.Fatalf("restored %q, want the refreshed copy", e.Description)
+	}
+}
+
+// A failed delete brings the entry back without moving the cursor.
+func TestFailedDeleteKeepsCursor(t *testing.T) {
+	mock := toggl.NewMock()
+	d := newDriverWith(t, failingDeleteService{mock}, mock)
+	d.key("d") // ID1, the row right above Standup
+	selectEntry(d, 2)
+	tickAt(d, 5)
+	wantSelected(t, d, 2)
+}
+
+func lipglossWidth(s string) int { return lipgloss.Width(s) }
+
+// A second q quits at once; a delete still unanswered is reported, since
+// it may not have reached Toggl.
+func TestQuitNowReportsUnansweredDelete(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d")
+	for range 2 {
+		mm, _ := d.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+		d.m = mm.(Model)
+	}
+	if msg := d.m.QuitError(); !strings.Contains(msg, "Yesterday task") || !strings.Contains(msg, "may still be in Toggl") {
+		t.Fatalf("QuitError() = %q, want it to name the unanswered delete", msg)
+	}
 }

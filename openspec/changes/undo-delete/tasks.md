@@ -18,7 +18,7 @@ under Yesterday). The driver advances the clock by feeding `tickMsg(fixedNow + n
 
 ## 3. Quitting and the status line
 
-- [x] 3.1 `q` / `ctrl+c` with a pending delete send it, then quit (`tea.Sequence`). Verify with `TestQuitSendsPendingDelete` (running the returned command: `Delete` called, then a quit message) and the same through `ctrl+c` with a dialog open
+- [x] 3.1 `q` / `ctrl+c` with a pending delete send it, then quit once every delete is answered (a `quitting` flag; a second `q` quits at once — see design §5). Verify with `TestQuitSendsPendingDelete` (running the returned command: `Delete` called, then a quit message) and the same through `ctrl+c` with a dialog open
 - [x] 3.2 The undo hint stays visible alongside any other status until the delete is sent or undone. Verify with `TestUndoHintSurvivesOtherStatus` (start a timer within the grace period: both statuses rendered)
 
 ## 4. Docs and integration
@@ -26,6 +26,16 @@ under Yesterday). The driver advances the clock by feeding `tickMsg(fixedNow + n
 - [x] 4.1 Update `docs/REQUIREMENTS.md` (feature list: delete with undo; keymap: `d`, `u`, `q`; remove the "Deletion undo" backlog item), `README.md` (keys table), and `docs/PLAN.md` (a decisions row citing this change). Verify by reading each key against `proposal.md`'s table
 - [x] 4.2 Run `go test -race ./...` and verify it passes
 - [x] 4.3 Run `go run . -mock` and verify by hand: `d` hides an entry and counts down; `u` brings it back; letting it run out removes it; deleting the running timer and pressing `u` resumes the ticking timer; `d` then `q` quits cleanly
+
+## 5. Review follow-ups
+
+- [x] 5.1 Hidden copies follow the entry: a new start stops a running hidden copy and clears its paused flag; a stop, pause, or edit answered after the delete patches the hidden copy instead of showing the entry again; a refresh replaces it with Toggl's data. Verify with `TestUndoAfterStartIsNotASecondTimer`, `TestUndoAfterStartIsNotPausedAgain`, `TestInFlightReplyDoesNotUnhide`, `TestUndoAfterRefreshRestoresFreshCopy`
+- [x] 5.2 A failed delete restores the entry without moving the cursor. Verify with `TestFailedDeleteKeepsCursor`
+- [x] 5.3 The status line fits the terminal, shortening the description and then the other status so `u undo (Ns)` stays. Verify with `TestUndoHintFitsNarrowTerminal`
+- [x] 5.4 While quitting, only `q`/`ctrl+c` act, `ctrl+c` closes an open dialog, and the quitting status stays. Verify with `TestQuittingIgnoresOtherKeys`, `TestCtrlCClosesDialogWhileQuitting`, `TestQuittingStatusSurvivesAnswers`
+- [x] 5.5 Deletes that failed or went unanswered while quitting are printed after exit (`Model.QuitError`, `main.go`). Verify with `TestFailedDeleteOnQuitIsReported`, `TestQuitNowReportsUnansweredDelete`
+- [x] 5.6 Harden `inTimeZone`: escape the test name, fail if the child ran no test or got the wrong zone, skip if the zone is missing
+- [x] 5.7 Correct design.md's grace-period risk (up to a second short, not long)
 
 ## Workflow follow-up
 

@@ -34,8 +34,15 @@ func main() {
 	}
 
 	p := tea.NewProgram(ui.New(svc), tea.WithAltScreen())
-	if _, err := p.Run(); err != nil {
+	final, err := p.Run()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, "lazytoggl:", err)
+		os.Exit(1)
+	}
+	// Deletes that didn't reach Toggl on the way out, now that the screen
+	// is back.
+	if m, ok := final.(ui.Model); ok && m.QuitError() != "" {
+		fmt.Fprintln(os.Stderr, "lazytoggl:", m.QuitError())
 		os.Exit(1)
 	}
 }

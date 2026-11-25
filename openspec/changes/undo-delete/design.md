@@ -74,7 +74,23 @@ hidden copies, with whether each was paused) and returns
   for an undo, then shows the error like any `errMsg`: the notice, the status, and
   the rate-limit wording.
 - **Refreshes** filter out both the pending ID and the IDs in `m.deleting`, so an
-  entry whose `DELETE` is in flight doesn't flash back.
+  entry whose `DELETE` is in flight doesn't flash back. The fresh data replaces the
+  hidden copy, so an undo restores what Toggl has now.
+
+### 3a. Hidden copies follow what happens to the entry
+
+The pending and in-flight copies (`eachHidden`) get the same updates the entry would
+get if it were listed, so an undo or a failed delete brings back the right state:
+
+- **A new start** stops a running hidden copy and clears its paused flag, as it does
+  for listed entries. Otherwise an undo would bring back a second running timer, or
+  re-pause an entry the new start superseded.
+- **A stop, pause, or edit answered after the delete** (`patchHidden`) updates the
+  hidden copy instead of `m.entries`. Before this, the reply's `replaceEntry` put the
+  entry back on screen while its delete was pending, so it could be deleted twice.
+- **A failed delete** restores the entry without moving the cursor (`restore` only
+  clamps it). `u` moves the cursor to the entry; a failure arrives while the user may
+  be doing something else.
 
 ### 4. One pending delete: a second `d` commits the first
 
@@ -92,13 +108,16 @@ last delete is answered, success or failure, the app quits.
   time with no way out. The flag lets a second `q` quit at once, and it is
   straightforward to test.
 
-- Bubble Tea delivers the delete's result before quitting, so a failure still shows
-  for that moment.
-- Either way the app quits.
-- If the delete failed, the entry still exists in Toggl. That is the same safe
-  outcome as the app being killed.
+While quitting:
 
-The `ctrl+c` path inside an open dialog does the same.
+- Only `q` and `ctrl+c` act; every other key is ignored, so no new delete or edit
+  can start and then be dropped on exit. `ctrl+c` in an open dialog closes it.
+- The status line keeps the quitting status, whatever other answers arrive.
+- Either way the app quits.
+- If a delete failed, or a second `q` quit before Toggl answered, the entry may
+  still exist in Toggl. That is the same safe outcome as the app being killed, but it
+  is not silent: `Model.QuitError()` collects these, and `main.go` prints them to
+  stderr once the screen is restored and exits with status 1.
 
 ### 6. The status line shows the hint next to other statuses
 
@@ -106,6 +125,10 @@ The `ctrl+c` path inside an open dialog does the same.
 `· deleted "<desc>" · u undo (<n>s)`, or shows the hint alone when there's no other
 status. Other actions keep calling `setStatus` as they do now, so the hint can't be
 overwritten.
+
+When the line is wider than the terminal (`statusTexts`), the description shortens
+first (to a few characters and `…`), then the other status, so `u undo (<n>s)`
+always stays on screen.
 
 ### 7. The confirm dialog goes away
 
@@ -129,8 +152,10 @@ Total per delete: 1, as today. Undone deletes cost nothing.
 - [The app is killed (not `q`/`ctrl+c`) during the grace period] → The delete is
   never sent and the entry reappears next launch. This is the safe direction, and the
   backlog accepted it.
-- [The tick runs on the wall clock, so the grace period can run up to a second
-  long] → Acceptable for an undo window. The countdown shows the real remaining time.
+- [The deadline counts from the last tick, which can be up to a second before the
+  key press, so the grace period lasts between 4 and 5 seconds] → Acceptable for an
+  undo window, and it needs no timer of its own. The countdown shows the time left
+  until the delete is sent.
 - [Muscle memory for `d` then `y`] → `y` is unbound in the list, so a reflexive `y`
   does nothing, and the status shows the undo hint.
 

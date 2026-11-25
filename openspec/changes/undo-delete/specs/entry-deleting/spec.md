@@ -30,6 +30,10 @@ second delete, a refresh, a failure, and quitting.
 - **WHEN** the user deletes the running entry and presses `u`
 - **THEN** the timer panel shows it running again
 
+#### Scenario: Undo after starting another timer
+- **WHEN** the user deletes the running entry, starts a new timer, and presses `u`
+- **THEN** the deleted entry comes back stopped, as Toggl now has it, and only the new timer runs
+
 ### Requirement: The delete is sent after the grace period
 When the grace period ends without an undo, the system SHALL send the delete to Toggl with one request. If it fails, the entry SHALL come back as it was and the error SHALL be shown as for any failed request.
 
@@ -56,14 +60,22 @@ A refresh during the grace period SHALL keep the pending entry hidden, even thou
 - **THEN** the refreshed list doesn't show the entry, and `u` still brings it back
 
 ### Requirement: Quitting sends a pending delete
-Quitting with `q` or `ctrl+c` during the grace period SHALL send the pending delete first and then quit.
+Quitting with `q` or `ctrl+c` during the grace period, or while a delete is in flight, SHALL send the pending delete, wait for Toggl's answers, and then quit. While waiting, the status line SHALL show `deleting before quitting… (q again to quit now)`, a second `q` or `ctrl+c` SHALL quit at once, and other keys SHALL do nothing. A delete that failed or went unanswered SHALL be reported after the app exits.
 
 #### Scenario: Quit right after deleting
 - **WHEN** the user deletes an entry and presses `q` at once
 - **THEN** one delete request is sent and then the app quits
 
+#### Scenario: Delete fails while quitting
+- **WHEN** the user quits with a pending delete and the delete request fails
+- **THEN** the app quits and then prints that the entry couldn't be deleted and is still in Toggl
+
 ### Requirement: The undo hint stays visible
-While a delete is pending, the undo hint SHALL stay visible in the status line alongside any other status, until the grace period ends or the delete is undone.
+While a delete is pending, the undo hint SHALL stay visible in the status line alongside any other status, until the grace period ends or the delete is undone. When the line doesn't fit the terminal, the description and then the other status SHALL be shortened so that `u undo (<n>s)` stays visible.
+
+#### Scenario: Narrow terminal
+- **WHEN** the terminal is 80 columns wide and the user deletes an entry with a long description and then starts a timer
+- **THEN** the status line fits in 80 columns and ends with `u undo (5s)`
 
 #### Scenario: Another action during the grace period
 - **WHEN** the user deletes an entry and then starts a timer within 5 seconds

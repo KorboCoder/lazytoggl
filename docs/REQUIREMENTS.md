@@ -64,7 +64,7 @@ toggles, `enter` acts on the selection.
 | `tab` | anywhere | Cycle panel focus |
 | `r` | anywhere | Refresh from API |
 | `?` | anywhere | Help overlay |
-| `q` / `ctrl+c` | anywhere | Quit (`esc` closes dialogs). With a delete pending or in flight, it is sent first and the app quits once it's answered; `q` again quits at once |
+| `q` / `ctrl+c` | anywhere | Quit (`esc` closes dialogs). With a delete pending or in flight, it is sent first and the app quits once it's answered (other keys wait; a delete that didn't go through is printed after exit); `q` again quits at once |
 
 ### Start dialog
 
