@@ -45,12 +45,13 @@ clock.
 | `space` | Pause/resume: toggles whatever the Timer panel already shows (running → pause, paused → resume); a no-op when the panel is idle |
 | `enter` | Resume the selected entry (pre-filled dialog), or stop it if running |
 | `e` | Edit — the selection in the list, or whatever the Timer panel shows (running, else paused) when it's focused |
-| `d` | Delete with confirmation — same targeting as `e` |
+| `d` | Delete — same targeting as `e`; immediate, undoable for 5 seconds |
+| `u` | Undo the pending delete (nothing has been sent yet) |
 | `j`/`k`, arrows | Navigate |
 | `tab` | Switch panel focus |
 | `r` | Refresh |
 | `?` | Toggle help |
-| `q` | Quit |
+| `q` | Quit (sends a pending delete first) |
 
 Full spec: [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) ·
 Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

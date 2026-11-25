@@ -401,14 +401,13 @@ func TestGapKeysIgnoredOnTimerPanel(t *testing.T) {
 // m's "now, to the minute" uses absolute time too, so it is right in the
 // repeated DST hour.
 func TestLogDefaultsInRepeatedDSTHour(t *testing.T) {
-	ny, err := time.LoadLocation("America/New_York")
-	if err != nil {
+	if _, err := time.LoadLocation("America/New_York"); err != nil {
 		t.Skipf("no tz database: %v", err)
 	}
-	saved := time.Local
-	time.Local = ny
-	t.Cleanup(func() { time.Local = saved })
-	now := time.Date(2026, 11, 1, 6, 40, 27, 0, time.UTC).In(ny) // 01:40:27 EST, the second pass
+	if !inTimeZone(t, "America/New_York") {
+		return
+	}
+	now := time.Date(2026, 11, 1, 6, 40, 27, 0, time.UTC).Local() // 01:40:27 EST, the second pass
 	dlg := dialogs.NewLog(now, nil)
 	dlg2, cmd := dlg.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	_ = dlg2

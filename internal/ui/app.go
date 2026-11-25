@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -16,6 +17,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/KorboCoder/lazytoggl/internal/toggl"
 	"github.com/KorboCoder/lazytoggl/internal/ui/dialogs"
@@ -48,6 +50,17 @@ type Model struct {
 	// by a new entry. Toggl has no native pause, so this is UI-only state
 	// layered over m.entries, the same source of truth used elsewhere.
 	pausedID int64
+
+	// pending is the delete u can undo until its deadline; deleting holds
+	// deletes sent but not yet answered. Both stay hidden from refreshes.
+	pending  *pendingDelete
+	deleting map[int64]deletedEntry
+	// quitting is set by q/ctrl+c while deletes are pending or in flight:
+	// the app quits once they're answered (a second q quits at once).
+	quitting bool
+	// quitErrs are deletes that didn't reach Toggl while quitting, reported
+	// after the program exits (QuitError).
+	quitErrs []string
 
 	width, height int
 	now           time.Time
@@ -105,6 +118,29 @@ type projectCreatedMsg struct {
 	next    func(projectID int64) tea.Cmd
 }
 type entryDeletedMsg struct{ id int64 }
+
+// deleteFailedMsg reports a delete Toggl refused; the entry comes back.
+type deleteFailedMsg struct {
+	gone deletedEntry
+	err  error
+}
+
+// undoGrace is how long a delete can be undone before it is sent: undoing
+// costs no request because nothing was sent yet.
+const undoGrace = 5 * time.Second
+
+// deletedEntry is an entry hidden by d, with whether it was the timer
+// panel's paused entry, so an undo (or a failed delete) restores it as it was.
+type deletedEntry struct {
+	entry  toggl.TimeEntry
+	paused bool
+}
+
+// pendingDelete is the one delete that u can still undo.
+type pendingDelete struct {
+	deletedEntry
+	deadline time.Time
+}
 type errMsg struct{ err error }
 
 func tickCmd() tea.Cmd {
@@ -127,12 +163,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.notice != "" && m.now.After(m.noticeExpiry) {
 			m.notice = ""
 		}
+		// The grace period is over: send the delete (1 request).
+		if p := m.pending; p != nil && !m.now.Before(p.deadline) {
+			return m, tea.Batch(tickCmd(), m.commitPending())
+		}
 		return m, tickCmd()
 
 	case dataLoadedMsg:
 		m.loading = false
 		m.notice = ""
-		m.entries = msg.entries
+		m.entries = m.withoutDeleted(msg.entries)
 		// A refresh reuses the session's project map (projects rarely change
 		// and every request counts against the hourly quota); msg.projects
 		// is non-nil only when they were fetched. Merged, not replaced, so a
@@ -151,11 +191,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Toggl stops the running entry when a new one starts; mirror that
 		// locally instead of refetching.
 		for i := range m.entries {
-			if m.entries[i].Running() && m.entries[i].ID != msg.entry.ID {
-				m.entries[i].Stop = msg.entry.Start
-				m.entries[i].Duration = int64(msg.entry.Start.Sub(m.entries[i].Start).Seconds())
-			}
+			stopAt(&m.entries[i], msg.entry)
 		}
+		// Hidden copies too, so an undo doesn't bring back a second timer
+		// or re-pause an entry the new start superseded.
+		m.eachHidden(func(g *deletedEntry) {
+			stopAt(&g.entry, msg.entry)
+			g.paused = false
+		})
 		m.entries = append([]toggl.TimeEntry{msg.entry}, m.entries...)
 		m.pausedID = 0
 		m.notice = ""
@@ -164,19 +207,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case entryStoppedMsg:
-		m.replaceEntry(msg.entry)
+		if !m.patchHidden(msg.entry, false) {
+			m.replaceEntry(msg.entry)
+		}
 		m.notice = ""
 		m.setStatus("timer stopped", false)
 		return m, nil
 
 	case entryPausedMsg:
-		m.replaceEntry(msg.entry)
-		m.pausedID = msg.entry.ID
+		if !m.patchHidden(msg.entry, true) {
+			m.replaceEntry(msg.entry)
+			m.pausedID = msg.entry.ID
+		}
 		m.notice = ""
 		m.setStatus("paused", false)
 		return m, nil
 
 	case entryUpdatedMsg:
+		if m.patchHidden(msg.entry, false) {
+			m.setStatus("entry saved", false)
+			return m, nil
+		}
 		var prevStart time.Time
 		if prev, ok := m.entryByID(msg.entry.ID); ok {
 			prevStart = prev.Start
@@ -188,7 +239,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus(savedStatus(msg.entry, prevStart, m.now), false)
 		return m, nil
 
+	case deleteFailedMsg:
+		delete(m.deleting, msg.gone.entry.ID)
+		if m.quitting {
+			// The entry survives in Toggl; say so once the screen is gone.
+			m.quitErrs = append(m.quitErrs, fmt.Sprintf("couldn't delete %q (%v): it's still in Toggl",
+				label(msg.gone.entry), msg.err))
+			return m, m.quitWhenDone()
+		}
+		// Back where it was, without moving the cursor off what the user
+		// has moved on to.
+		sel, hasSel := m.entriesPanel.Selected(panels.BuildRows(m.entries, m.now))
+		m.restore(msg.gone)
+		if hasSel && sel.Kind == panels.RowEntry {
+			m.entriesPanel.SelectID(panels.BuildRows(m.entries, m.now), sel.Entry.ID)
+		}
+		return m.Update(errMsg{msg.err})
+
 	case entryDeletedMsg:
+		delete(m.deleting, msg.id)
+		if m.quitting {
+			return m, m.quitWhenDone()
+		}
 		for i := range m.entries {
 			if m.entries[i].ID == msg.id {
 				m.entries = append(m.entries[:i], m.entries[i+1:]...)
@@ -276,15 +348,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus("saving…", false)
 		return m, m.updateCmd(msg.Entry)
 
-	case dialogs.DeleteConfirmMsg:
-		m.dialog = nil
-		m.setStatus("deleting…", false)
-		return m, m.deleteCmd(msg.EntryID)
-
 	case tea.KeyMsg:
+		// While quitting, only a second q/ctrl+c acts (quitting at once):
+		// anything else could start work that would be dropped on exit.
+		if m.quitting {
+			if msg.String() == "ctrl+c" || (m.dialog == nil && key.Matches(msg, m.keys.Quit)) {
+				return m.quit()
+			}
+			return m, nil
+		}
 		if m.dialog != nil {
 			if msg.String() == "ctrl+c" {
-				return m, tea.Quit
+				return m.quit()
 			}
 			var cmd tea.Cmd
 			m.dialog, cmd = m.dialog.Update(msg)
@@ -312,7 +387,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Quit):
-		return m, tea.Quit
+		return m.quit()
 
 	case key.Matches(msg, m.keys.Help):
 		m.help.ShowAll = !m.help.ShowAll
@@ -379,11 +454,15 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Delete):
 		if e := m.actionTarget(rows); e != nil {
-			desc := e.Description
-			if desc == "" {
-				desc = "(no description)"
-			}
-			m.dialog = dialogs.NewConfirm(e.ID, desc)
+			return m.deleteWithUndo(*e)
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Undo):
+		if p := m.pending; p != nil {
+			m.pending = nil
+			m.restore(p.deletedEntry)
+			m.entriesPanel.SelectID(panels.BuildRows(m.entries, m.now), p.entry.ID)
 		}
 		return m, nil
 	}
@@ -472,12 +551,20 @@ func (m Model) View() string {
 		return "loading…"
 	}
 
+	status, hint := m.statusTexts(m.width - 1)
 	statusLine := " "
-	if m.status != "" {
-		if m.statusErr {
-			statusLine = " " + theme.ErrStyle.Render(m.status)
+	if status != "" {
+		if m.statusErr && !m.quitting {
+			statusLine = " " + theme.ErrStyle.Render(status)
 		} else {
-			statusLine = " " + theme.MutedStyle.Render(m.status)
+			statusLine = " " + theme.MutedStyle.Render(status)
+		}
+	}
+	if hint != "" {
+		if status == "" {
+			statusLine = " " + theme.MutedStyle.Render(hint)
+		} else {
+			statusLine += theme.MutedStyle.Render(" · " + hint)
 		}
 	}
 	helpView := m.help.View(m.keys)
@@ -749,12 +836,185 @@ func (m Model) updateCmd(entry toggl.TimeEntry) tea.Cmd {
 	}
 }
 
-func (m Model) deleteCmd(id int64) tea.Cmd {
+// quit quits, but first sends a pending delete and waits for deletes in
+// flight, so a delete the user made is never silently dropped. A second
+// q/ctrl+c while waiting quits at once.
+func (m Model) quit() (tea.Model, tea.Cmd) {
+	if m.quitting {
+		for _, g := range m.deleting {
+			m.quitErrs = append(m.quitErrs, fmt.Sprintf("quit before Toggl answered: %q may still be in Toggl", label(g.entry)))
+		}
+		return m, tea.Quit
+	}
+	if m.pending == nil && len(m.deleting) == 0 {
+		return m, tea.Quit
+	}
+	m.quitting = true
+	m.dialog = nil
+	return m, m.commitPending()
+}
+
+const quittingStatus = "deleting before quitting… (q again to quit now)"
+
+// quitWhenDone quits once no delete is in flight.
+func (m Model) quitWhenDone() tea.Cmd {
+	if len(m.deleting) == 0 {
+		return tea.Quit
+	}
+	return nil
+}
+
+// QuitError describes deletes that didn't reach Toggl while quitting, for
+// printing after the program exits; "" when there were none.
+func (m Model) QuitError() string {
+	return strings.Join(m.quitErrs, "\n")
+}
+
+// deleteWithUndo hides e at once and makes it the pending delete; a delete
+// already pending is sent now, since only one can be undone.
+func (m Model) deleteWithUndo(e toggl.TimeEntry) (tea.Model, tea.Cmd) {
+	cmd := m.commitPending()
+	gone := deletedEntry{entry: e, paused: e.ID == m.pausedID}
+	m.hide(e.ID)
+	m.pending = &pendingDelete{deletedEntry: gone, deadline: m.now.Add(undoGrace)}
+	return m, cmd
+}
+
+// withoutDeleted drops the pending delete and deletes still in flight from
+// freshly loaded entries: Toggl returns them until the DELETE lands. Their
+// hidden copies take the fresh data, so an undo restores what Toggl has.
+func (m *Model) withoutDeleted(entries []toggl.TimeEntry) []toggl.TimeEntry {
+	out := entries[:0:0]
+	for _, e := range entries {
+		if !m.patchHidden(e, false) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// eachHidden applies f to the pending delete and the deletes in flight.
+func (m *Model) eachHidden(f func(*deletedEntry)) {
+	if m.pending != nil {
+		p := *m.pending // copy: older Models share the pointer
+		f(&p.deletedEntry)
+		m.pending = &p
+	}
+	for id, g := range m.deleting {
+		f(&g)
+		m.deleting[id] = g
+	}
+}
+
+// patchHidden stores e in its hidden copy, if e is pending or in flight,
+// and reports whether it was. paused marks it paused (a pause reply); a
+// running copy is never paused.
+func (m *Model) patchHidden(e toggl.TimeEntry, paused bool) bool {
+	found := false
+	m.eachHidden(func(g *deletedEntry) {
+		if g.entry.ID == e.ID {
+			g.entry = e
+			g.paused = (g.paused || paused) && !e.Running()
+			found = true
+		}
+	})
+	return found
+}
+
+// stopAt mirrors Toggl stopping a running entry when started begins.
+func stopAt(e *toggl.TimeEntry, started toggl.TimeEntry) {
+	if e.Running() && e.ID != started.ID {
+		e.Stop = started.Start
+		e.Duration = int64(started.Start.Sub(e.Start).Seconds())
+	}
+}
+
+// label is an entry's description for messages.
+func label(e toggl.TimeEntry) string {
+	if e.Description == "" {
+		return "(no description)"
+	}
+	return e.Description
+}
+
+// hide removes the entry from m.entries, and so from the list and the
+// timer panel, which both read it.
+func (m *Model) hide(id int64) {
+	for i := range m.entries {
+		if m.entries[i].ID == id {
+			m.entries = append(m.entries[:i], m.entries[i+1:]...)
+			break
+		}
+	}
+	if id == m.pausedID {
+		m.pausedID = 0
+	}
+	m.clampCursor()
+}
+
+// restore puts a hidden entry back as it was.
+func (m *Model) restore(gone deletedEntry) {
+	m.replaceEntry(gone.entry)
+	if gone.paused {
+		m.pausedID = gone.entry.ID
+	}
+	m.clampCursor()
+}
+
+// commitPending sends the pending delete, if any, and returns its request.
+func (m *Model) commitPending() tea.Cmd {
+	p := m.pending
+	if p == nil {
+		return nil
+	}
+	m.pending = nil
+	if m.deleting == nil {
+		m.deleting = map[int64]deletedEntry{}
+	}
+	m.deleting[p.entry.ID] = p.deletedEntry
+	return m.deleteCmd(p.deletedEntry)
+}
+
+func (m Model) deleteCmd(gone deletedEntry) tea.Cmd {
 	svc := m.svc
+	id := gone.entry.ID
 	return func() tea.Msg {
 		if err := svc.Delete(context.Background(), id); err != nil {
-			return errMsg{err}
+			return deleteFailedMsg{gone: gone, err: err}
 		}
 		return entryDeletedMsg{id: id}
 	}
+}
+
+// statusTexts is the status and the undo hint for a status line width
+// columns wide. While a delete can be undone, the hint rides along with any
+// other status, so u is never available without saying so; when they don't
+// fit, the description shortens first, then the other status, so "u undo
+// (Ns)" stays on screen.
+func (m Model) statusTexts(width int) (status, hint string) {
+	status = m.status
+	if m.quitting {
+		status = quittingStatus
+	}
+	p := m.pending
+	if p == nil {
+		return ansi.Truncate(status, max(width, 0), "…"), ""
+	}
+	left := p.deadline.Sub(m.now)
+	secs := max(int((left+time.Second-1)/time.Second), 0) // round up
+	head, tail := `deleted "`, fmt.Sprintf(`" · u undo (%ds)`, secs)
+	desc := label(p.entry)
+	if status != "" {
+		width -= ansi.StringWidth(status) + len(" · ")
+	}
+	room := width - ansi.StringWidth(head+tail)
+	if room < ansi.StringWidth(desc) {
+		desc = ansi.Truncate(desc, max(room, 4), "…")
+	}
+	hint = head + desc + tail
+	if width < ansi.StringWidth(hint) && status != "" {
+		over := ansi.StringWidth(hint) - width
+		status = ansi.Truncate(status, max(ansi.StringWidth(status)-over, 1), "…")
+	}
+	return status, hint
 }

@@ -158,15 +158,14 @@ func TestGapNeverOverlaps(t *testing.T) {
 // Minute rounding uses absolute time, so the repeated DST hour isn't
 // mistaken for the earlier pass of the same wall time.
 func TestGapAboveNowInRepeatedDSTHour(t *testing.T) {
-	ny, err := time.LoadLocation("America/New_York")
-	if err != nil {
+	if _, err := time.LoadLocation("America/New_York"); err != nil {
 		t.Skipf("no tz database: %v", err)
 	}
-	saved := time.Local
-	time.Local = ny
-	t.Cleanup(func() { time.Local = saved })
+	if !inTimeZone(t, "America/New_York") {
+		return
+	}
 	// 01:40:27 EST, the second 01:xx of 2026-11-01.
-	now := time.Date(2026, 11, 1, 6, 40, 27, 0, time.UTC).In(ny)
+	now := time.Date(2026, 11, 1, 6, 40, 27, 0, time.UTC).Local()
 	sel := fin(1, now.Add(-time.Hour), now.Add(-30*time.Minute))
 	_, stop, ok := gapAbove([]toggl.TimeEntry{sel}, sel, now)
 	if want := now.Truncate(time.Minute); !ok || !stop.Equal(want) {

@@ -15,6 +15,7 @@ type keyMap struct {
 	GapAbove key.Binding
 	Edit     key.Binding
 	Delete   key.Binding
+	Undo     key.Binding
 	Refresh  key.Binding
 	Tab      key.Binding
 	Help     key.Binding
@@ -33,6 +34,7 @@ func defaultKeys() keyMap {
 		GapAbove: key.NewBinding(key.WithKeys("O"), key.WithHelp("O", "log gap above")),
 		Edit:     key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit")),
 		Delete:   key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+		Undo:     key.NewBinding(key.WithKeys("u"), key.WithHelp("u", "undo delete")),
 		Refresh:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		Tab:      key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "switch panel")),
 		Help:     key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help")),
@@ -49,7 +51,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.Tab},
 		{k.Space, k.Create, k.Log, k.Enter},
 		{k.GapBelow, k.GapAbove},
-		{k.Edit, k.Delete, k.Refresh},
+		{k.Edit, k.Delete, k.Undo, k.Refresh},
 		{k.Help, k.Quit},
 	}
 }

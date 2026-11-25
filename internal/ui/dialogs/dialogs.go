@@ -39,9 +39,6 @@ type LogSubmitMsg struct {
 	NewProject string
 }
 
-// DeleteConfirmMsg asks the app to delete an entry.
-type DeleteConfirmMsg struct{ EntryID int64 }
-
 func closeCmd() tea.Cmd { return func() tea.Msg { return CloseMsg{} } }
 
 const boxWidth = 56
