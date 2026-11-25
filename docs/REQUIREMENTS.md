@@ -101,7 +101,7 @@ it.
 | letters, `backspace` | dropdown | Edit the description and refilter; deleting the `@` or moving the cursor before it closes the dropdown |
 | letters, `backspace` | picker | Edit the picker's own search |
 | `up` / `down`, `ctrl+p` / `ctrl+n` | dropdown, picker | Move the selection |
-| `enter`, `tab` | dropdown, picker | Pick: set the project row (the dropdown also removes `@search` from the description). Never starts or saves |
+| `enter`, `tab` | dropdown, picker | Pick: set the project row (the dropdown also removes `@search` from the description). Never starts or saves. In the start and log dialogs a pick from the row's picker moves focus to the description, so the next `enter` starts or logs; the edit dialog stays on the project row |
 | `esc` | dropdown | Close it, keeping the typed text |
 | `esc` | picker | Close it, project unchanged |
 

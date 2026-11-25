@@ -178,11 +178,16 @@ func (d *Edit) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 		if isKey {
 			var res PickResult
 			d.picker, res = d.picker.Update(k)
-			if res == PickPicked {
-				d.project = chose(d.picker.Picked())
-			}
 			if res != PickEditing {
 				d.pickerOpen = false
+			}
+			if res == PickPicked {
+				d.project = chose(d.picker.Picked())
+				// Logging: back to the description, where enter logs.
+				// Editing keeps the row, as enter there never saves.
+				if d.logMode {
+					return d, d.setFocus(0)
+				}
 			}
 		}
 		return d, nil

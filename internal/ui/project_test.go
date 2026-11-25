@@ -40,10 +40,29 @@ func TestStartPickProjectFromRow(t *testing.T) {
 	d.keys("acm", "enter")
 	d.dialogContains("ACME")
 	d.dialogLacks("search or create") // the picker closed
-	d.keys("shift+tab", "enter")      // back on the description: enter starts
+	d.dialogContains("> description") // the pick moved focus back
+	d.key("enter")                    // so enter starts
 	run := d.m.runningEntry()
 	if run == nil || run.Description != "Task" || run.ProjectID != 101 {
 		t.Fatalf("running = %+v, want Task on ACME (101)", run)
+	}
+}
+
+// esc in the row's picker picks nothing, so focus stays on the project row.
+func TestStartPickerEscKeepsProjectRow(t *testing.T) {
+	d := newDriver(t)
+	d.keys("c", "Task", "tab", "enter", "esc")
+	d.dialogLacks("search or create")
+	d.dialogContains("> project")
+}
+
+// tab in the picker picks like enter, and also moves focus to the description.
+func TestStartPickerTabPicksThenEnterStarts(t *testing.T) {
+	d := newDriver(t)
+	d.keys("c", "Task", "tab", "enter", "int", "tab", "enter")
+	run := d.m.runningEntry()
+	if run == nil || run.Description != "Task" || run.ProjectID != 102 {
+		t.Fatalf("running = %+v, want Task on Internal (102)", run)
 	}
 }
 
@@ -357,3 +376,16 @@ func TestStartWithNewProjectStatusSaysStarting(t *testing.T) {
 }
 
 func keyEnter() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyEnter} }
+
+// The edit dialog keeps focus on the project row after a pick: enter never
+// saves there, and the form is walked row by row.
+func TestEditPickFromRowKeepsFocus(t *testing.T) {
+	d := openEditID3(t)
+	d.keys("shift+tab", "enter", "acm", "enter") // project row is last
+	d.dialogLacks("search or create")
+	d.dialogContains("> project")
+	d.dialogContains("ACME")
+	if n := d.mock.Calls("Update"); n != 0 {
+		t.Fatalf("Update calls = %d, want 0", n)
+	}
+}
