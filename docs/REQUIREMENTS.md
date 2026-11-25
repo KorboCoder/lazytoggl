@@ -72,7 +72,7 @@ toggles, `enter` acts on the selection.
 |---|---|---|
 | `tab` / `shift+tab`, `down` / `up` | form | Move between description and project |
 | `enter` | description | Start the timer (while no `@` dropdown is open) |
-| `enter` | project row | Open the project picker |
+| `enter` | project row | Open the project picker; a pick returns focus to the description, so `enter` again starts |
 | `esc` | form | Cancel |
 
 ### Log-entry dialog
@@ -89,6 +89,7 @@ it.
 | Key | Context | Action |
 |---|---|---|
 | `enter` | description | Log the entry (while no `@` dropdown is open); 1 request, 2 with a `(new)` project |
+| `enter` | project row | Open the project picker; unlike the edit dialog, a pick returns focus to the description, so `enter` again logs |
 | `esc` | form | Cancel: closes at once if nothing changed from the defaults, otherwise asks `Discard this entry?` |
 | `d` | discard prompt | Discard and close (not `y`: in the edit review `y` saves) |
 | `esc` | discard prompt | Back to the form |
@@ -101,7 +102,7 @@ it.
 | letters, `backspace` | dropdown | Edit the description and refilter; deleting the `@` or moving the cursor before it closes the dropdown |
 | letters, `backspace` | picker | Edit the picker's own search |
 | `up` / `down`, `ctrl+p` / `ctrl+n` | dropdown, picker | Move the selection |
-| `enter`, `tab` | dropdown, picker | Pick: set the project row (the dropdown also removes `@search` from the description). Never starts or saves |
+| `enter`, `tab` | dropdown, picker | Pick: set the project row (the dropdown also removes `@search` from the description). Never starts or saves. In the start and log dialogs a pick from the row's picker moves focus to the description, so the next `enter` starts or logs; the edit dialog stays on the project row |
 | `esc` | dropdown | Close it, keeping the typed text |
 | `esc` | picker | Close it, project unchanged |
 

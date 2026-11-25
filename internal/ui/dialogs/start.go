@@ -52,11 +52,14 @@ func (d *Start) Update(msg tea.Msg) (Dialog, tea.Cmd) {
 	if d.pickerOpen {
 		var res PickResult
 		d.picker, res = d.picker.Update(k)
-		if res == PickPicked {
-			d.project = chose(d.picker.Picked())
-		}
 		if res != PickEditing {
 			d.pickerOpen = false
+		}
+		if res == PickPicked {
+			d.project = chose(d.picker.Picked())
+			// Back to the description, where enter starts: picking is
+			// usually the last step before going.
+			return d, d.setFocus(0)
 		}
 		return d, nil
 	}
