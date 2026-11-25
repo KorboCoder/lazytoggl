@@ -567,7 +567,7 @@ func (m Model) View() string {
 			statusLine += theme.MutedStyle.Render(" · " + hint)
 		}
 	}
-	helpView := m.help.View(m.keys)
+	helpView := m.helpView()
 	bottomH := lipgloss.Height(statusLine) + lipgloss.Height(helpView)
 
 	const timerH = 3
@@ -1017,4 +1017,37 @@ func (m Model) statusTexts(width int) (status, hint string) {
 		status = ansi.Truncate(status, max(ansi.StringWidth(status)-over, 1), "…")
 	}
 	return status, hint
+}
+
+// helpView is the bottom help (short, or full with ?), fitted to the width.
+// bubbles' help truncates by itself, but when an item doesn't fit and there
+// is no room left for its "…", it adds the item anyway, and every item after
+// it (help.shouldAddItem in v1.0.0), so the bar overflowed at some widths.
+// Instead this renders without bubbles' limit and keeps the most items (or
+// columns) that fit along with a "…".
+func (m Model) helpView() string {
+	h := m.help
+	h.Width = 0 // untruncated: fitHelp does the fitting
+	tail := " " + h.Styles.Ellipsis.Inline(true).Render(h.Ellipsis)
+	if h.ShowAll {
+		groups := m.keys.FullHelp()
+		return fitHelp(len(groups), m.width, tail, func(n int) string { return h.FullHelpView(groups[:n]) })
+	}
+	bindings := m.keys.ShortHelp()
+	return fitHelp(len(bindings), m.width, tail, func(n int) string { return h.ShortHelpView(bindings[:n]) })
+}
+
+// fitHelp renders the first n of count help items, for the largest n whose
+// rendering (followed by tail when items are left out) fits width columns.
+func fitHelp(count, width int, tail string, render func(n int) string) string {
+	for n := count; n >= 0; n-- {
+		v := render(n)
+		if n < count {
+			v = lipgloss.JoinHorizontal(lipgloss.Top, v, tail)
+		}
+		if lipgloss.Width(v) <= width {
+			return v
+		}
+	}
+	return ""
 }
