@@ -38,9 +38,10 @@ None.
 
 ### Modified Capabilities
 
-- `project-picking`: the "Project picker from the project row" requirement says where
-  focus goes after a pick: the description in the start and log dialogs, the project
-  row in the edit dialog.
+- `project-picking`: "Project picker from the project row" now names the log dialog,
+  and a new requirement, "Focus after picking from the project row", says where focus
+  goes after a pick: the description in the start and log dialogs, the project row in
+  the edit dialog.
 
 ## Impact
 
