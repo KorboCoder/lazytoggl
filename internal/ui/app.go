@@ -53,6 +53,9 @@ type Model struct {
 	// deletes sent but not yet answered. Both stay hidden from refreshes.
 	pending  *pendingDelete
 	deleting map[int64]deletedEntry
+	// quitting is set by q/ctrl+c while deletes are pending or in flight:
+	// the app quits once they're answered (a second q quits at once).
+	quitting bool
 
 	width, height int
 	now           time.Time
@@ -222,11 +225,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case deleteFailedMsg:
 		delete(m.deleting, msg.gone.entry.ID)
+		if m.quitting && len(m.deleting) == 0 {
+			return m, tea.Quit // the entry survives in Toggl; nothing was lost
+		}
 		m.restore(msg.gone)
 		return m.Update(errMsg{msg.err})
 
 	case entryDeletedMsg:
 		delete(m.deleting, msg.id)
+		if m.quitting && len(m.deleting) == 0 {
+			return m, tea.Quit
+		}
 		for i := range m.entries {
 			if m.entries[i].ID == msg.id {
 				m.entries = append(m.entries[:i], m.entries[i+1:]...)
@@ -317,7 +326,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.dialog != nil {
 			if msg.String() == "ctrl+c" {
-				return m, tea.Quit
+				return m.quit()
 			}
 			var cmd tea.Cmd
 			m.dialog, cmd = m.dialog.Update(msg)
@@ -345,7 +354,7 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case key.Matches(msg, m.keys.Quit):
-		return m, tea.Quit
+		return m.quit()
 
 	case key.Matches(msg, m.keys.Help):
 		m.help.ShowAll = !m.help.ShowAll
@@ -792,6 +801,18 @@ func (m Model) updateCmd(entry toggl.TimeEntry) tea.Cmd {
 		}
 		return entryUpdatedMsg{entry: e}
 	}
+}
+
+// quit quits, but first sends a pending delete and waits for deletes in
+// flight, so a delete the user made is never silently dropped. A second
+// q/ctrl+c while waiting quits at once.
+func (m Model) quit() (tea.Model, tea.Cmd) {
+	if m.quitting || (m.pending == nil && len(m.deleting) == 0) {
+		return m, tea.Quit
+	}
+	m.quitting = true
+	m.setStatus("deleting before quitting… (q again to quit now)", false)
+	return m, m.commitPending()
 }
 
 // deleteWithUndo hides e at once and makes it the pending delete; a delete

@@ -83,8 +83,14 @@ the new one pending. The returned command is that delete request.
 
 ### 5. Quitting sends first
 
-`q`/`ctrl+c` with `pending != nil` returns
-`tea.Sequence(commitDelete(...), tea.Quit)` and sets the status to `deleting…`.
+`q`/`ctrl+c` with a pending delete (or one in flight) sends it, sets
+`quitting`, and shows `deleting before quitting… (q again to quit now)`. When the
+last delete is answered, success or failure, the app quits.
+
+- *Changed during implementation:* the plan was `tea.Sequence(delete, tea.Quit)`.
+  But a slow network, with the client's retries, could hold that quit for a long
+  time with no way out. The flag lets a second `q` quit at once, and it is
+  straightforward to test.
 
 - Bubble Tea delivers the delete's result before quitting, so a failure still shows
   for that moment.

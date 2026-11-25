@@ -18,8 +18,8 @@ under Yesterday). The driver advances the clock by feeding `tickMsg(fixedNow + n
 
 ## 3. Quitting and the status line
 
-- [ ] 3.1 `q` / `ctrl+c` with a pending delete send it, then quit (`tea.Sequence`). Verify with `TestQuitSendsPendingDelete` (running the returned command: `Delete` called, then a quit message) and the same through `ctrl+c` with a dialog open
-- [ ] 3.2 The undo hint stays visible alongside any other status until the delete is sent or undone. Verify with `TestUndoHintSurvivesOtherStatus` (start a timer within the grace period: both statuses rendered)
+- [x] 3.1 `q` / `ctrl+c` with a pending delete send it, then quit (`tea.Sequence`). Verify with `TestQuitSendsPendingDelete` (running the returned command: `Delete` called, then a quit message) and the same through `ctrl+c` with a dialog open
+- [x] 3.2 The undo hint stays visible alongside any other status until the delete is sent or undone. Verify with `TestUndoHintSurvivesOtherStatus` (start a timer within the grace period: both statuses rendered)
 
 ## 4. Docs and integration
 

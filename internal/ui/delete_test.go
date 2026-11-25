@@ -237,3 +237,90 @@ func TestRefreshKeepsInFlightDeleteHidden(t *testing.T) {
 		t.Fatal("after the delete was answered, refresh no longer shows what Toggl returns")
 	}
 }
+
+func isQuit(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	_, ok := cmd().(tea.QuitMsg)
+	return ok
+}
+
+// q with a pending delete sends it, then quits once it's answered.
+func TestQuitSendsPendingDelete(t *testing.T) {
+	for _, quit := range []tea.KeyMsg{
+		{Type: tea.KeyRunes, Runes: []rune("q")},
+		{Type: tea.KeyCtrlC},
+	} {
+		d := newDriver(t)
+		d.keys("j", "j", "d")
+		mm, cmd := d.m.Update(quit)
+		d.m = mm.(Model)
+		if cmd == nil {
+			t.Fatalf("%s did nothing", quit)
+		}
+		answer := cmd() // runs the delete, once
+		if _, quitNow := answer.(tea.QuitMsg); quitNow {
+			t.Fatalf("%s quit before sending the pending delete", quit)
+		}
+		mm, cmd = d.m.Update(answer)
+		d.m = mm.(Model)
+		if d.mock.Calls("Delete") != 1 || !isQuit(cmd) {
+			t.Fatalf("%s: Delete calls %d, quit %v; want 1 then quit", quit, d.mock.Calls("Delete"), isQuit(cmd))
+		}
+	}
+}
+
+// ctrl+c with a dialog open also sends the pending delete first.
+func TestCtrlCInDialogSendsPendingDelete(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d", "c") // a start dialog is open
+	mm, cmd := d.m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+	d.m = mm.(Model)
+	if cmd == nil {
+		t.Fatal("ctrl+c in a dialog did nothing")
+	}
+	if _, quitNow := cmd().(tea.QuitMsg); quitNow || d.mock.Calls("Delete") != 1 {
+		t.Fatalf("ctrl+c in a dialog: quit at once %v, Delete calls %d; want the delete sent first", quitNow, d.mock.Calls("Delete"))
+	}
+}
+
+// A failed delete on the way out still quits; the entry survives in Toggl.
+func TestQuitAfterFailedDeleteStillQuits(t *testing.T) {
+	mock := toggl.NewMock()
+	d := newDriverWith(t, failingDeleteService{mock}, mock)
+	d.keys("j", "j", "d")
+	mm, cmd := d.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	d.m = mm.(Model)
+	mm, cmd = d.m.Update(cmd())
+	d.m = mm.(Model)
+	if !isQuit(cmd) {
+		t.Fatal("a failed delete on quit did not quit")
+	}
+}
+
+// Without a pending delete, q quits at once; a second q while a delete is
+// being sent quits without waiting.
+func TestQuitWithoutPendingIsImmediate(t *testing.T) {
+	d := newDriver(t)
+	if _, cmd := d.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); !isQuit(cmd) {
+		t.Fatal("q with nothing pending did not quit at once")
+	}
+	d.keys("j", "j", "d")
+	mm, _ := d.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	d.m = mm.(Model)
+	if _, cmd := d.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")}); !isQuit(cmd) {
+		t.Fatal("a second q while the delete is sent did not quit")
+	}
+}
+
+// Another action during the grace period doesn't hide the undo hint.
+func TestUndoHintSurvivesOtherStatus(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d", "c", "fresh", "enter") // start a timer within the grace period
+	if d.m.status != "timer started" {
+		t.Fatalf("status = %q, want the start's status", d.m.status)
+	}
+	wantView(t, d, "timer started")
+	wantView(t, d, `deleted "Yesterday task" · u undo`)
+}
