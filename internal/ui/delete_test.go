@@ -5,12 +5,16 @@ package ui
 // today, ID3 "Yesterday task" (rows: ID1, ID2, then ID3 under Yesterday).
 
 import (
+	"context"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/KorboCoder/lazytoggl/internal/toggl"
+	"github.com/KorboCoder/lazytoggl/internal/ui/panels"
 )
 
 // view is the whole screen, status line included.
@@ -135,5 +139,101 @@ func TestUndoWithNothingPending(t *testing.T) {
 	d.key("u")
 	if len(d.m.entries) != 3 || d.mock.Calls("Delete") != 0 {
 		t.Fatalf("u with nothing pending changed something: %d entries, %d deletes", len(d.m.entries), d.mock.Calls("Delete"))
+	}
+}
+
+func TestDeleteCountsDown(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d")
+	tickAt(d, 2)
+	wantView(t, d, "u undo (3s)")
+}
+
+func TestDeleteSentAfterGrace(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d")
+	tickAt(d, 4)
+	if n := d.mock.Calls("Delete"); n != 0 {
+		t.Fatalf("Delete calls at 4s = %d, want 0", n)
+	}
+	tickAt(d, 5)
+	if n := d.mock.Calls("Delete"); n != 1 {
+		t.Fatalf("Delete calls at 5s = %d, want 1", n)
+	}
+	wantNoView(t, d, "u undo")
+	d.key("u")
+	if _, ok := d.entryByID(3); ok {
+		t.Fatal("u after the grace period brought the entry back")
+	}
+}
+
+// selectEntry puts the list cursor on entry id.
+func selectEntry(d *driver, id int64) {
+	d.m.entriesPanel.SelectID(panels.BuildRows(d.m.entries, d.m.now), id)
+}
+
+func TestSecondDeleteCommitsFirst(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "d") // Standup pending
+	selectEntry(d, 3)
+	d.key("d") // Yesterday task: Standup is sent now
+	if n := d.mock.Calls("Delete"); n != 1 {
+		t.Fatalf("Delete calls = %d, want 1 (the first delete, sent at once)", n)
+	}
+	d.key("u")
+	if _, ok := d.entryByID(3); !ok {
+		t.Fatal("u did not bring back the second delete")
+	}
+	if _, ok := d.entryByID(2); ok {
+		t.Fatal("the first delete came back")
+	}
+}
+
+// failingDeleteService is the mock, except that deletes fail.
+type failingDeleteService struct{ *toggl.Mock }
+
+func (failingDeleteService) Delete(ctx context.Context, id int64) error {
+	return toggl.ErrRateLimited
+}
+
+func TestDeleteFailureRestores(t *testing.T) {
+	mock := toggl.NewMock()
+	d := newDriverWith(t, failingDeleteService{mock}, mock)
+	d.keys("j", "j", "d")
+	tickAt(d, 5)
+	if _, ok := d.entryByID(3); !ok {
+		t.Fatal("a failed delete did not bring the entry back")
+	}
+	if !strings.Contains(d.m.notice, "Rate limited") {
+		t.Fatalf("notice = %q, want the rate-limit error", d.m.notice)
+	}
+}
+
+func TestRefreshKeepsPendingHidden(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d")
+	d.feed(dataLoadedMsg{entries: fixtureEntries()}) // Toggl still has it
+	if _, ok := d.entryByID(3); ok {
+		t.Fatal("refresh brought back a pending delete")
+	}
+	d.key("u")
+	if _, ok := d.entryByID(3); !ok {
+		t.Fatal("u after a refresh did not bring the entry back")
+	}
+}
+
+func TestRefreshKeepsInFlightDeleteHidden(t *testing.T) {
+	d := newDriver(t)
+	d.keys("j", "j", "d")
+	mm, _ := d.m.Update(tickMsg(fixedNow.Add(5 * time.Second))) // sent, not yet answered
+	d.m = mm.(Model)
+	d.feed(dataLoadedMsg{entries: fixtureEntries()})
+	if _, ok := d.entryByID(3); ok {
+		t.Fatal("refresh brought back an entry whose delete is in flight")
+	}
+	d.feed(entryDeletedMsg{id: 3})
+	d.feed(dataLoadedMsg{entries: fixtureEntries()})
+	if _, ok := d.entryByID(3); !ok {
+		t.Fatal("after the delete was answered, refresh no longer shows what Toggl returns")
 	}
 }

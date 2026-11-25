@@ -11,10 +11,10 @@ under Yesterday). The driver advances the clock by feeding `tickMsg(fixedNow + n
 
 ## 2. Sending the delete
 
-- [ ] 2.1 On `tickMsg`, send the pending delete when its deadline passes, counting the hint down each second. Verify with `TestDeleteCountsDown` (`(3s)` after 2s) and `TestDeleteSentAfterGrace` (one `Delete` call at 5s; hint gone; `u` then does nothing)
-- [ ] 2.2 A second `d` sends the pending delete at once and makes the new one pending. Verify with `TestSecondDeleteCommitsFirst`
-- [ ] 2.3 A failed delete restores the entry and shows the error (`deleteFailedMsg`). Verify with `TestDeleteFailureRestores`, using a fake `Service` whose `Delete` fails
-- [ ] 2.4 Refreshes keep the pending entry, and entries whose delete is in flight, hidden. Verify with `TestRefreshKeepsPendingHidden` (then `u` still restores) and `TestRefreshKeepsInFlightDeleteHidden`
+- [x] 2.1 On `tickMsg`, send the pending delete when its deadline passes, counting the hint down each second. Verify with `TestDeleteCountsDown` (`(3s)` after 2s) and `TestDeleteSentAfterGrace` (one `Delete` call at 5s; hint gone; `u` then does nothing)
+- [x] 2.2 A second `d` sends the pending delete at once and makes the new one pending. Verify with `TestSecondDeleteCommitsFirst`
+- [x] 2.3 A failed delete restores the entry and shows the error (`deleteFailedMsg`). Verify with `TestDeleteFailureRestores`, using a fake `Service` whose `Delete` fails
+- [x] 2.4 Refreshes keep the pending entry, and entries whose delete is in flight, hidden. Verify with `TestRefreshKeepsPendingHidden` (then `u` still restores) and `TestRefreshKeepsInFlightDeleteHidden`
 
 ## 3. Quitting and the status line
 

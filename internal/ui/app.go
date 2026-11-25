@@ -155,12 +155,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.notice != "" && m.now.After(m.noticeExpiry) {
 			m.notice = ""
 		}
+		// The grace period is over: send the delete (1 request).
+		if p := m.pending; p != nil && !m.now.Before(p.deadline) {
+			return m, tea.Batch(tickCmd(), m.commitPending())
+		}
 		return m, tickCmd()
 
 	case dataLoadedMsg:
 		m.loading = false
 		m.notice = ""
-		m.entries = msg.entries
+		m.entries = m.withoutDeleted(msg.entries)
 		// A refresh reuses the session's project map (projects rarely change
 		// and every request counts against the hourly quota); msg.projects
 		// is non-nil only when they were fetched. Merged, not replaced, so a
@@ -798,6 +802,19 @@ func (m Model) deleteWithUndo(e toggl.TimeEntry) (tea.Model, tea.Cmd) {
 	m.hide(e.ID)
 	m.pending = &pendingDelete{deletedEntry: gone, deadline: m.now.Add(undoGrace)}
 	return m, cmd
+}
+
+// withoutDeleted drops the pending delete and deletes still in flight from
+// freshly loaded entries: Toggl returns them until the DELETE lands.
+func (m Model) withoutDeleted(entries []toggl.TimeEntry) []toggl.TimeEntry {
+	out := entries[:0:0]
+	for _, e := range entries {
+		if _, inFlight := m.deleting[e.ID]; inFlight || (m.pending != nil && m.pending.entry.ID == e.ID) {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
 }
 
 // hide removes the entry from m.entries, and so from the list and the
