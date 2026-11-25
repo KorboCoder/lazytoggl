@@ -49,6 +49,11 @@ type Model struct {
 	// layered over m.entries, the same source of truth used elsewhere.
 	pausedID int64
 
+	// pending is the delete u can undo until its deadline; deleting holds
+	// deletes sent but not yet answered. Both stay hidden from refreshes.
+	pending  *pendingDelete
+	deleting map[int64]deletedEntry
+
 	width, height int
 	now           time.Time
 	loading       bool
@@ -105,6 +110,29 @@ type projectCreatedMsg struct {
 	next    func(projectID int64) tea.Cmd
 }
 type entryDeletedMsg struct{ id int64 }
+
+// deleteFailedMsg reports a delete Toggl refused; the entry comes back.
+type deleteFailedMsg struct {
+	gone deletedEntry
+	err  error
+}
+
+// undoGrace is how long a delete can be undone before it is sent: undoing
+// costs no request because nothing was sent yet.
+const undoGrace = 5 * time.Second
+
+// deletedEntry is an entry hidden by d, with whether it was the timer
+// panel's paused entry, so an undo (or a failed delete) restores it as it was.
+type deletedEntry struct {
+	entry  toggl.TimeEntry
+	paused bool
+}
+
+// pendingDelete is the one delete that u can still undo.
+type pendingDelete struct {
+	deletedEntry
+	deadline time.Time
+}
 type errMsg struct{ err error }
 
 func tickCmd() tea.Cmd {
@@ -188,7 +216,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatus(savedStatus(msg.entry, prevStart, m.now), false)
 		return m, nil
 
+	case deleteFailedMsg:
+		delete(m.deleting, msg.gone.entry.ID)
+		m.restore(msg.gone)
+		return m.Update(errMsg{msg.err})
+
 	case entryDeletedMsg:
+		delete(m.deleting, msg.id)
 		for i := range m.entries {
 			if m.entries[i].ID == msg.id {
 				m.entries = append(m.entries[:i], m.entries[i+1:]...)
@@ -275,11 +309,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.setStatus("saving…", false)
 		return m, m.updateCmd(msg.Entry)
-
-	case dialogs.DeleteConfirmMsg:
-		m.dialog = nil
-		m.setStatus("deleting…", false)
-		return m, m.deleteCmd(msg.EntryID)
 
 	case tea.KeyMsg:
 		if m.dialog != nil {
@@ -379,11 +408,14 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case key.Matches(msg, m.keys.Delete):
 		if e := m.actionTarget(rows); e != nil {
-			desc := e.Description
-			if desc == "" {
-				desc = "(no description)"
-			}
-			m.dialog = dialogs.NewConfirm(e.ID, desc)
+			return m.deleteWithUndo(*e)
+		}
+		return m, nil
+
+	case key.Matches(msg, m.keys.Undo):
+		if p := m.pending; p != nil {
+			m.pending = nil
+			m.restore(p.deletedEntry)
 		}
 		return m, nil
 	}
@@ -478,6 +510,15 @@ func (m Model) View() string {
 			statusLine = " " + theme.ErrStyle.Render(m.status)
 		} else {
 			statusLine = " " + theme.MutedStyle.Render(m.status)
+		}
+	}
+	// The undo hint rides along with any other status, so u is never
+	// available without saying so.
+	if hint := m.undoHint(); hint != "" {
+		if m.status == "" {
+			statusLine = " " + theme.MutedStyle.Render(hint)
+		} else {
+			statusLine += theme.MutedStyle.Render(" · " + hint)
 		}
 	}
 	helpView := m.help.View(m.keys)
@@ -749,12 +790,76 @@ func (m Model) updateCmd(entry toggl.TimeEntry) tea.Cmd {
 	}
 }
 
-func (m Model) deleteCmd(id int64) tea.Cmd {
+// deleteWithUndo hides e at once and makes it the pending delete; a delete
+// already pending is sent now, since only one can be undone.
+func (m Model) deleteWithUndo(e toggl.TimeEntry) (tea.Model, tea.Cmd) {
+	cmd := m.commitPending()
+	gone := deletedEntry{entry: e, paused: e.ID == m.pausedID}
+	m.hide(e.ID)
+	m.pending = &pendingDelete{deletedEntry: gone, deadline: m.now.Add(undoGrace)}
+	return m, cmd
+}
+
+// hide removes the entry from m.entries, and so from the list and the
+// timer panel, which both read it.
+func (m *Model) hide(id int64) {
+	for i := range m.entries {
+		if m.entries[i].ID == id {
+			m.entries = append(m.entries[:i], m.entries[i+1:]...)
+			break
+		}
+	}
+	if id == m.pausedID {
+		m.pausedID = 0
+	}
+	m.clampCursor()
+}
+
+// restore puts a hidden entry back as it was, with the cursor on it.
+func (m *Model) restore(gone deletedEntry) {
+	m.replaceEntry(gone.entry)
+	if gone.paused {
+		m.pausedID = gone.entry.ID
+	}
+	m.entriesPanel.SelectID(panels.BuildRows(m.entries, m.now), gone.entry.ID)
+}
+
+// commitPending sends the pending delete, if any, and returns its request.
+func (m *Model) commitPending() tea.Cmd {
+	p := m.pending
+	if p == nil {
+		return nil
+	}
+	m.pending = nil
+	if m.deleting == nil {
+		m.deleting = map[int64]deletedEntry{}
+	}
+	m.deleting[p.entry.ID] = p.deletedEntry
+	return m.deleteCmd(p.deletedEntry)
+}
+
+func (m Model) deleteCmd(gone deletedEntry) tea.Cmd {
 	svc := m.svc
+	id := gone.entry.ID
 	return func() tea.Msg {
 		if err := svc.Delete(context.Background(), id); err != nil {
-			return errMsg{err}
+			return deleteFailedMsg{gone: gone, err: err}
 		}
 		return entryDeletedMsg{id: id}
 	}
+}
+
+// undoHint is the status suffix while a delete can be undone.
+func (m Model) undoHint() string {
+	p := m.pending
+	if p == nil {
+		return ""
+	}
+	left := p.deadline.Sub(m.now)
+	secs := int((left + time.Second - 1) / time.Second) // round up
+	desc := p.entry.Description
+	if desc == "" {
+		desc = "(no description)"
+	}
+	return fmt.Sprintf("deleted \"%s\" · u undo (%ds)", desc, max(secs, 0))
 }

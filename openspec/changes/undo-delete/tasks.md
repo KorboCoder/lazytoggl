@@ -6,8 +6,8 @@ under Yesterday). The driver advances the clock by feeding `tickMsg(fixedNow + n
 
 ## 1. Delete with a grace period, and undo
 
-- [ ] 1.1 Replace the confirm dialog with a pending delete: `d` hides the target (list selection, or the timer panel's running or paused entry), stores it with a 5-second deadline, sends nothing, and shows `deleted "<desc>" · u undo (5s)`. Delete `dialogs/confirm.go` and `DeleteConfirmMsg`. Verify in a new `internal/ui/delete_test.go`: `TestDeleteHidesAtOnce` (no `Delete` call; status text), `TestDeleteRunningEntryClearsTimer`, `TestDeleteEmptyDescription`; rewrite `TestDeleteCancelAndConfirm` (→ `TestDeleteThenUndo`) and the `d`/`y` steps in `TestTimerFocusActsOnRunningEntry`
-- [ ] 1.2 Add `u` (`keyMap.Undo`): restore the pending entry as it was (running, or paused via `pausedID`), with the cursor on it and no request; `u` with nothing pending does nothing. Verify with `TestUndoRestoresEntry`, `TestUndoRestoresRunning`, `TestUndoRestoresPaused`, `TestUndoWithNothingPending`
+- [x] 1.1 Replace the confirm dialog with a pending delete: `d` hides the target (list selection, or the timer panel's running or paused entry), stores it with a 5-second deadline, sends nothing, and shows `deleted "<desc>" · u undo (5s)`. Delete `dialogs/confirm.go` and `DeleteConfirmMsg`. Verify in a new `internal/ui/delete_test.go`: `TestDeleteHidesAtOnce` (no `Delete` call; status text), `TestDeleteRunningEntryClearsTimer`, `TestDeleteEmptyDescription`; rewrite `TestDeleteCancelAndConfirm` (→ `TestDeleteThenUndo`) and the `d`/`y` steps in `TestTimerFocusActsOnRunningEntry`
+- [x] 1.2 Add `u` (`keyMap.Undo`): restore the pending entry as it was (running, or paused via `pausedID`), with the cursor on it and no request; `u` with nothing pending does nothing. Verify with `TestUndoRestoresEntry`, `TestUndoRestoresRunning`, `TestUndoRestoresPaused`, `TestUndoWithNothingPending`
 
 ## 2. Sending the delete
 

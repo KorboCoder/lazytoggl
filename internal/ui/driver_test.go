@@ -105,7 +105,7 @@ func (d *driver) feed(msg tea.Msg) {
 	case dataLoadedMsg, entryStartedMsg, entryStoppedMsg, entryPausedMsg, entryUpdatedMsg,
 		entryDeletedMsg, errMsg, projectCreatedMsg,
 		dialogs.CloseMsg, dialogs.StartSubmitMsg, dialogs.EditSubmitMsg, dialogs.LogSubmitMsg, entryLoggedMsg,
-		dialogs.DeleteConfirmMsg:
+		deleteFailedMsg:
 		mm, cmd := d.m.Update(msg)
 		d.m = mm.(Model)
 		d.exec(cmd)
@@ -302,11 +302,18 @@ func TestTimerFocusActsOnRunningEntry(t *testing.T) {
 	d.dialogContains("Writing project plan")
 	d.key("esc")
 
-	// d deletes the running entry, not the list selection.
+	// d deletes the running entry, not the list selection; u undoes it.
 	d.key("d")
-	d.dialogContains("Delete entry?")
-	d.dialogContains("Writing project plan")
-	d.key("n")
+	if d.m.runningEntry() != nil {
+		t.Fatal("d did not delete the running entry")
+	}
+	if _, ok := d.entryByID(2); !ok {
+		t.Fatal("d deleted the list selection instead of the running entry")
+	}
+	d.key("u")
+	if run := d.m.runningEntry(); run == nil || run.ID != 1 {
+		t.Fatal("u did not bring the running entry back")
+	}
 
 	// Pausing keeps the entry pinned to the Timer panel, so e/d still target
 	// it — not whatever the list has selected — while paused.
@@ -321,9 +328,9 @@ func TestTimerFocusActsOnRunningEntry(t *testing.T) {
 
 	// Deleting the paused entry clears it; e/d on an idle Timer panel is
 	// then a no-op with a hint.
-	d.keys("d", "y")
-	if d.m.dialog != nil {
-		t.Fatal("dialog still open after delete")
+	d.key("d")
+	if d.m.pausedEntry() != nil {
+		t.Fatal("paused entry still shown after delete")
 	}
 	d.key("e")
 	if d.m.dialog != nil {
@@ -346,26 +353,6 @@ func TestEditSavesDescription(t *testing.T) {
 	e, _ := d.entryByID(1)
 	if e.Description != "Renamed" || !e.Running() {
 		t.Fatalf("entry = %+v, want running with description Renamed", e)
-	}
-}
-
-func TestDeleteCancelAndConfirm(t *testing.T) {
-	d := newDriver(t)
-	d.keys("j", "j", "d")
-	d.dialogContains("Delete entry?")
-	d.dialogContains("Yesterday task")
-
-	d.key("n")
-	if _, ok := d.entryByID(3); !ok {
-		t.Fatal("entry deleted despite cancel")
-	}
-
-	d.keys("d", "y")
-	if _, ok := d.entryByID(3); ok {
-		t.Fatal("entry still present after confirmed delete")
-	}
-	if len(d.m.entries) != 2 {
-		t.Fatalf("entries = %d, want 2", len(d.m.entries))
 	}
 }
 
