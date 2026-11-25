@@ -26,7 +26,8 @@
    saved (1 extra request).
 9. **Edit** an entry's description, project, start/stop date and time, and duration (times are
    edited as `HH:MM`, with the date beside them in the same field), reviewing a
-   before → after summary before saving; **delete** with a confirmation dialog.
+   before → after summary before saving; **delete** at once with a 5-second undo
+   (`u`): the API call waits out the grace period, so an undo costs no request.
 10. **Manual refresh only** (`r`). No background polling. Every mutation updates local
    state from the API response, so normal usage costs 1 request per action plus 1 fetch
    at startup. This is a hard requirement from the Free-plan rate limit
@@ -56,13 +57,14 @@ toggles, `enter` acts on the selection.
 | `enter` | on a past entry | Open start dialog **pre-filled** from that entry (resume); `enter` again to go |
 | `enter` | on the running entry | Stop it (clears the Timer panel to idle — unlike `space`) |
 | `enter` | Timer panel | Stop the running timer; open the create dialog when idle |
-| `e` / `d` | entries list | Edit / delete (with confirmation) the selected entry |
+| `e` / `d` | entries list | Edit / delete the selected entry (delete is immediate, undoable for 5 seconds) |
+| `u` | anywhere | Undo the pending delete: the entry comes back as it was (running or paused too), and nothing is sent. The status line shows `deleted "<desc>" · u undo (Ns)` while it can be undone; after 5 seconds the `DELETE` is sent (1 request). One pending delete at a time: deleting another sends the first at once. A refresh keeps it hidden; a failed delete brings it back with the error |
 | `e` / `d` | Timer panel | Edit / delete whatever the panel is showing — the **running** entry, or the **paused** one if nothing is running — regardless of list selection |
 | `j` / `k`, arrows | list | Navigate |
 | `tab` | anywhere | Cycle panel focus |
 | `r` | anywhere | Refresh from API |
 | `?` | anywhere | Help overlay |
-| `q` / `ctrl+c` | anywhere | Quit (`esc` closes dialogs) |
+| `q` / `ctrl+c` | anywhere | Quit (`esc` closes dialogs). With a delete pending or in flight, it is sent first and the app quits once it's answered; `q` again quits at once |
 
 ### Start dialog
 
@@ -153,7 +155,7 @@ that it drops off on the next refresh.
 ```
 
 - When idle, the Timer panel shows a muted "no timer running — press c to start".
-- Dialogs (start, edit, delete-confirm, help) render as centered popups over the panels,
+- Dialogs (start, edit, log, help) render as centered popups over the panels,
   lazygit-style.
 
 ## Backlog (post-MVP, toward feature parity)
@@ -168,4 +170,3 @@ Roughly in expected priority order; reordered by feedback during Phase 3.
 - Offline queue (start/stop while offline, sync later)
 - Pomodoro mode
 - Calendar/timeline view
-- Deletion undo (grace period before the API call)

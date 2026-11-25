@@ -23,9 +23,9 @@ under Yesterday). The driver advances the clock by feeding `tickMsg(fixedNow + n
 
 ## 4. Docs and integration
 
-- [ ] 4.1 Update `docs/REQUIREMENTS.md` (feature list: delete with undo; keymap: `d`, `u`, `q`; remove the "Deletion undo" backlog item), `README.md` (keys table), and `docs/PLAN.md` (a decisions row citing this change). Verify by reading each key against `proposal.md`'s table
-- [ ] 4.2 Run `go test -race ./...` and verify it passes
-- [ ] 4.3 Run `go run . -mock` and verify by hand: `d` hides an entry and counts down; `u` brings it back; letting it run out removes it; deleting the running timer and pressing `u` resumes the ticking timer; `d` then `q` quits cleanly
+- [x] 4.1 Update `docs/REQUIREMENTS.md` (feature list: delete with undo; keymap: `d`, `u`, `q`; remove the "Deletion undo" backlog item), `README.md` (keys table), and `docs/PLAN.md` (a decisions row citing this change). Verify by reading each key against `proposal.md`'s table
+- [x] 4.2 Run `go test -race ./...` and verify it passes
+- [x] 4.3 Run `go run . -mock` and verify by hand: `d` hides an entry and counts down; `u` brings it back; letting it run out removes it; deleting the running timer and pressing `u` resumes the ticking timer; `d` then `q` quits cleanly
 
 ## Workflow follow-up
 
